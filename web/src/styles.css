@@ -152,10 +152,6 @@ code, .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; f
 .gradient-text { background: var(--gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .hero-subtitle { color: var(--muted); font-size: 1.05rem; max-width: 580px; margin: 0 auto; }
 .hero-card { padding: 1.6rem; box-shadow: var(--shadow-lg); border-color: color-mix(in srgb, var(--accent) 25%, var(--border)); }
-.features { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr)); gap: 0.75rem; }
-.features li { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.8rem; border-radius: 12px; background: color-mix(in srgb, var(--surface) 70%, transparent); border: 1px solid var(--border); font-size: 0.85rem; color: var(--muted); }
-.features li svg { color: var(--accent); flex: none; margin-top: 2px; }
-.features strong { display: block; color: var(--text); font-size: 0.9rem; }
 
 /* ───────────── Forms & buttons ───────────── */
 .form { display: grid; gap: 1.1rem; }

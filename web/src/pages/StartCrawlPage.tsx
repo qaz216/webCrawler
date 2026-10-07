@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
-import { ArrowRight, ChartColumn, Copy, Globe, Network, Zap } from "lucide-react";
+import { ArrowRight, Globe, Zap } from "lucide-react";
 import { ApiError } from "../api/client";
 import { useCreateJob } from "../api/hooks";
 import { ErrorPanel } from "../components/Feedback";
@@ -81,13 +81,6 @@ export function StartCrawlPage() {
           </div>
         </form>
       </section>
-
-      <ul className="features" aria-label="Features">
-        <li><Zap size={18} aria-hidden="true" /><span><strong>Live progress</strong>Pages stream in as workers crawl them</span></li>
-        <li><Network size={18} aria-hidden="true" /><span><strong>Site graph</strong>See the structure the crawl uncovered</span></li>
-        <li><ChartColumn size={18} aria-hidden="true" /><span><strong>Link insights</strong>Which pages send visitors elsewhere</span></li>
-        <li><Copy size={18} aria-hidden="true" /><span><strong>No duplicates</strong>Same page under two URLs is crawled once</span></li>
-      </ul>
     </div>
   );
 }
