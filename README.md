@@ -13,14 +13,15 @@ A job-based web crawler made of event-driven microservices. A user submits a URL
 1. [Tech stack](#tech-stack)
 2. [Architecture](#architecture)
 3. [Building From Scratch](#building-from-scratch)
-4. [Running locally](#running-locally)
-5. [API](#api)
-6. [Crawling rules and assumptions](#crawling-rules-and-assumptions)
-7. [Messaging](#messaging) (schema, idempotency, retries, DLQ)
-8. [Data model and performance](#data-model-and-performance)
-9. [Frontend](#frontend)
-10. [Observability](#observability)
-11. [Testing](#testing)
+4. [Application Endpoints](#application-endpoints)
+5. [Running locally](#running-locally)
+6. [API](#api)
+7. [Crawling rules and assumptions](#crawling-rules-and-assumptions)
+8. [Messaging](#messaging) (schema, idempotency, retries, DLQ)
+9. [Data model and performance](#data-model-and-performance)
+10. [Frontend](#frontend)
+11. [Observability](#observability)
+12. [Testing](#testing)
 
 ---
 
@@ -71,6 +72,17 @@ docker system df
 # build the api, worker and web images and start the whole stack in the background
 docker compose up -d --build
 ```
+
+## Application Endpoints
+
+| Service              | URL                                   |
+|----------------------|---------------------------------------|
+| **React UI**         | **http://localhost:3000**             |
+| Crawl API (+Swagger) | http://localhost:8080/swagger         |
+| API health           | http://localhost:8080/health/ready    |
+| Worker health        | http://localhost:8081/health/ready    |
+| RabbitMQ management  | http://localhost:15672 (guest/guest)  |
+| PostgreSQL           | localhost:5432 (crawler/crawler)      |
 
 ### Solution layout
 
