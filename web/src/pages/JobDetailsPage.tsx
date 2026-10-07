@@ -1,10 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
-import { ExternalLink, ListTree, Network, X } from "lucide-react";
+import { CircleStop, ExternalLink, ListTree, Network, X } from "lucide-react";
 import { ApiError } from "../api/client";
 import { useCancelJob, useJob, useJobTree } from "../api/hooks";
 import { isActive, type JobDetails, type JobTree } from "../api/types";
 import { ActivityFeed } from "../components/ActivityFeed";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState, ErrorPanel, Loading } from "../components/Feedback";
 import { JobProgressBar } from "../components/JobProgressBar";
 import { PageTree } from "../components/PageTree";
@@ -67,6 +68,7 @@ function JobView({ job, stale }: { job: JobDetails; stale: boolean }) {
 
 function JobSummary({ job, stale }: { job: JobDetails; stale: boolean }) {
   const cancel = useCancelJob(job.jobId);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const now = useNow(isActive(job.status));
   const from = redirectedFrom(job);
 
@@ -84,22 +86,33 @@ function JobSummary({ job, stale }: { job: JobDetails; stale: boolean }) {
         <div className="job-header-actions">
           <StatusBadge status={job.status} />
           {isActive(job.status) && (
-            <button type="button" className="button button-danger button-small" disabled={cancel.isPending}
-              onClick={() => {
-                if (window.confirm("Cancel this crawl? Pages already crawled are kept.")) cancel.mutate();
-              }}>
-              <X size={14} aria-hidden="true" /> {cancel.isPending ? "Canceling…" : "Cancel crawl"}
+            <button type="button" className="button button-danger button-small"
+              onClick={() => { cancel.reset(); setConfirmCancel(true); }}>
+              <X size={14} aria-hidden="true" /> Cancel crawl
             </button>
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmCancel && isActive(job.status)}
+        icon={CircleStop}
+        title="Stop this crawl?"
+        confirmLabel="Stop crawl"
+        busyLabel="Stopping…"
+        cancelLabel="Keep crawling"
+        busy={cancel.isPending}
+        error={cancel.error ? `Could not stop the crawl: ${cancel.error.message}` : null}
+        onConfirm={() => cancel.mutate(undefined, { onSuccess: () => setConfirmCancel(false) })}
+        onCancel={() => setConfirmCancel(false)}>
+        <p>No new pages will be crawled. The <strong>{job.progress.completed} pages</strong> already crawled are kept.</p>
+      </ConfirmDialog>
 
       {stale && (
         <p className="alert alert-warning small" role="status">
           Lost contact with the API; showing the last known status. Retrying…
         </p>
       )}
-      {cancel.error && <ErrorPanel error={cancel.error} title="Could not cancel the crawl" />}
       {job.status === "Failed" && job.failureReason && (
         <div className="alert alert-error" role="alert">
           <strong>Crawl failed</strong>

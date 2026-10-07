@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { Trash2 } from "lucide-react";
 import { useClearJobs, useJobs } from "../api/hooks";
+import { isActive } from "../api/types";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmptyState, ErrorPanel, Loading } from "../components/Feedback";
 import { RatioMeter } from "../components/RatioMeter";
 import { StatusBadge } from "../components/StatusBadge";
@@ -14,14 +17,24 @@ export function HistoryPage() {
   const page = Math.max(1, Number(searchParams.get("page")) || 1);
   const jobs = useJobs(page, PAGE_SIZE);
   const clearJobs = useClearJobs();
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const totalCount = jobs.data?.totalCount ?? 0;
+  const runningCount = jobs.data?.items.filter((job) => isActive(job.status)).length ?? 0;
 
   const goTo = (target: number) => setSearchParams(target === 1 ? {} : { page: String(target) });
 
-  function handleClearAll() {
-    const message = `Delete all ${totalCount} crawl ${totalCount === 1 ? "job" : "jobs"} and their results? `
-      + "Running crawls are stopped. This can't be undone.";
-    if (window.confirm(message)) clearJobs.mutate(undefined, { onSuccess: () => goTo(1) });
+  function openConfirm() {
+    clearJobs.reset();
+    setConfirmOpen(true);
+  }
+
+  function clearAll() {
+    clearJobs.mutate(undefined, {
+      onSuccess: () => {
+        setConfirmOpen(false);
+        goTo(1);
+      },
+    });
   }
 
   return (
@@ -30,14 +43,30 @@ export function HistoryPage() {
         <h1>Crawl history</h1>
         <div className="header-actions">
           <Link to="/" className="button button-small">New crawl</Link>
-          <button type="button" className="button button-small button-danger" onClick={handleClearAll}
-            disabled={totalCount === 0 || clearJobs.isPending}>
-            <Trash2 size={14} aria-hidden="true" /> {clearJobs.isPending ? "Clearing…" : "Clear all"}
+          <button type="button" className="button button-small button-danger" onClick={openConfirm}
+            disabled={totalCount === 0}>
+            <Trash2 size={14} aria-hidden="true" /> Clear all
           </button>
         </div>
       </div>
 
-      {clearJobs.error && <ErrorPanel error={clearJobs.error} title="Could not clear the history" />}
+      <ConfirmDialog
+        open={confirmOpen}
+        icon={Trash2}
+        title="Clear crawl history?"
+        confirmLabel={`Delete ${totalCount} ${totalCount === 1 ? "job" : "jobs"}`}
+        busyLabel="Clearing…"
+        busy={clearJobs.isPending}
+        error={clearJobs.error ? `Could not clear the history: ${clearJobs.error.message}` : null}
+        onConfirm={clearAll}
+        onCancel={() => setConfirmOpen(false)}>
+        <p>
+          This permanently deletes <strong>{totalCount} crawl {totalCount === 1 ? "job" : "jobs"}</strong> with all
+          their pages and results.
+        </p>
+        {runningCount > 0 && <p>{runningCount === 1 ? "1 crawl is" : `${runningCount} crawls are`} still running and will be stopped.</p>}
+        <p className="muted">This can't be undone.</p>
+      </ConfirmDialog>
 
       {jobs.isPending ? (
         <Loading label="Loading history…" />

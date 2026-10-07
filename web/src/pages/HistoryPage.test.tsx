@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import type { JobListItem, PagedResult } from "../api/types";
@@ -32,6 +32,12 @@ function renderPage() {
   );
 }
 
+async function openClearDialog() {
+  await screen.findByRole("link", { name: "https://example.com/" }); // list loaded, button enabled
+  fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+  return screen.getByRole("dialog", { name: "Clear crawl history?" });
+}
+
 describe("HistoryPage", () => {
   it("lists jobs with their average link ratio", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(json(page([job])));
@@ -41,7 +47,7 @@ describe("HistoryPage", () => {
     expect(screen.getByText("87.5%")).toBeInTheDocument();
   });
 
-  it("clears all jobs after confirmation", async () => {
+  it("asks for confirmation in a dialog, then clears all jobs", async () => {
     let cleared = false;
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
       if (init?.method === "DELETE") {
@@ -50,28 +56,40 @@ describe("HistoryPage", () => {
       }
       return json(page(cleared ? [] : [job]));
     });
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     renderPage();
-    await screen.findByRole("link", { name: "https://example.com/" }); // list loaded, button enabled
 
-    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    const dialog = await openClearDialog();
+    expect(dialog).toHaveTextContent("This permanently deletes 1 crawl job");
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/jobs", expect.objectContaining({ method: "DELETE" }));
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete 1 job" }));
 
     expect(await screen.findByText("No crawls yet")).toBeInTheDocument();
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("Delete all 1 crawl job"));
     expect(fetchMock).toHaveBeenCalledWith("/api/jobs", expect.objectContaining({ method: "DELETE" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("does nothing when the confirmation is declined", async () => {
+  it("keeps everything when the dialog is cancelled", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(page([job])));
-    vi.spyOn(window, "confirm").mockReturnValue(false);
     renderPage();
-    await screen.findByRole("link", { name: "https://example.com/" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    const dialog = await openClearDialog();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
-    expect(window.confirm).toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalledWith("/api/jobs", expect.objectContaining({ method: "DELETE" }));
     expect(screen.getByRole("link", { name: "https://example.com/" })).toBeInTheDocument();
+  });
+
+  it("shows the error inside the dialog when clearing fails", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) =>
+      init?.method === "DELETE" ? json({ title: "Server error" }, 500) : json(page([job])));
+    renderPage();
+
+    const dialog = await openClearDialog();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete 1 job" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Could not clear the history: Server error");
   });
 
   it("disables Clear all when there is nothing to clear", async () => {
