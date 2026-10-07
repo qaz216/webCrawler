@@ -72,8 +72,6 @@ docker system df
 docker compose up -d --build
 ```
 
-The first build takes a few minutes, because it downloads the base images and builds everything. Then open http://localhost:3000. Service URLs and how to check the stack are under [Running locally](#running-locally).
-
 ### Solution layout
 
 ```
