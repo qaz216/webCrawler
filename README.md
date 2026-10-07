@@ -34,7 +34,7 @@ A job-based web crawler made of event-driven microservices. A user submits a URL
 | HTTP resilience| `Microsoft.Extensions.Http.Resilience` (Polly v8)           |
 | Logging        | Serilog, structured JSON to the console                     |
 | Frontend       | React + TypeScript + Vite, React Router, TanStack Query     |
-| Tests          | xUnit, FluentAssertions, Testcontainers (PostgreSQL)        |
+| Tests          | xUnit, Testcontainers (PostgreSQL)                          |
 | Local runtime  | Docker Compose                                              |
 | CI             | GitHub Actions: build and test                              |
 
