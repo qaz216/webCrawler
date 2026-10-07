@@ -74,12 +74,11 @@ public static class DependencyInjection
                 var options = sp.GetRequiredService<IOptions<HttpFetchOptions>>().Value;
                 var handler = new SocketsHttpHandler
                 {
-                    AllowAutoRedirect = true,
-                    MaxAutomaticRedirections = options.MaxRedirects,
+                    AllowAutoRedirect = false, // HttpPageFetcher follows redirects itself (incl. https → http)
                     AutomaticDecompression = DecompressionMethods.All,
                     PooledConnectionLifetime = TimeSpan.FromMinutes(5),
                 };
-                // Every connection (including each redirect hop) goes through the SSRF check.
+                // Every connection (each redirect hop is a new request) goes through the SSRF check.
                 if (options.BlockPrivateNetworks)
                     handler.ConnectCallback = PrivateNetworkGuard.ConnectAsync;
                 return handler;

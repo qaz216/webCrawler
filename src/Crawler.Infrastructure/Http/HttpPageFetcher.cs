@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using Crawler.Application;
 using Crawler.Application.Abstractions;
+using Microsoft.Extensions.Options;
 using Polly;
 
 namespace Crawler.Infrastructure.Http;
@@ -10,36 +11,63 @@ namespace Crawler.Infrastructure.Http;
 /// Fetches pages over HTTP. Classifies outcomes for the retry policy (README → Retry policy):
 /// 408, 429, 5xx, timeouts and connection errors are transient (thrown); other 4xx and
 /// non-HTML responses are permanent results (returned). Bodies are capped at <see cref="MaxBodyBytes"/>.
-/// Per-attempt timeouts, in-process retries and redirects are configured on the injected HttpClient.
+/// <para>
+/// Redirects are followed here rather than by HttpClient, which refuses https → http downgrades
+/// (common on real sites, e.g. a section that redirects to an http sign-up page). Every hop is a new
+/// connection, so the SSRF guard checks each one. Per-attempt timeouts and in-process retries are
+/// configured on the injected HttpClient.
+/// </para>
 /// </summary>
-public sealed class HttpPageFetcher(HttpClient httpClient) : IPageFetcher
+public sealed class HttpPageFetcher(HttpClient httpClient, IOptions<HttpFetchOptions>? options = null) : IPageFetcher
 {
     public const int MaxBodyBytes = 2 * 1024 * 1024;
 
     private static readonly string[] HtmlMediaTypes = ["text/html", "application/xhtml+xml"];
 
+    private readonly int _maxRedirects = options?.Value.MaxRedirects ?? new HttpFetchOptions().MaxRedirects;
+
     public async Task<FetchResult> FetchAsync(Uri url, CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Accept.ParseAdd("text/html,application/xhtml+xml;q=0.9,*/*;q=0.1");
-
-        HttpResponseMessage sent;
-        try
+        var currentUri = url;
+        for (var redirects = 0; ; redirects++)
         {
-            sent = await SendAsync(request, cancellationToken);
-        }
-        catch (BlockedDestinationException blocked)
-        {
-            return FetchResult.Refused(url, blocked.Message);
-        }
+            using var request = new HttpRequestMessage(HttpMethod.Get, currentUri);
+            request.Headers.Accept.ParseAdd("text/html,application/xhtml+xml;q=0.9,*/*;q=0.1");
 
-        using var response = sent;
+            HttpResponseMessage sent;
+            try
+            {
+                sent = await SendAsync(request, cancellationToken);
+            }
+            catch (BlockedDestinationException blocked)
+            {
+                return FetchResult.Refused(currentUri, blocked.Message);
+            }
 
+            using var response = sent;
+
+            if (!IsRedirect((int)response.StatusCode) || response.Headers.Location is not { } location)
+                return await ReadResponseAsync(response, currentUri, cancellationToken);
+
+            if (redirects >= _maxRedirects)
+                return FetchResult.Refused(currentUri, $"Too many redirects (more than {_maxRedirects}).");
+
+            var next = location.IsAbsoluteUri ? location : new Uri(currentUri, location);
+            if (next.Scheme != Uri.UriSchemeHttp && next.Scheme != Uri.UriSchemeHttps)
+                return FetchResult.Refused(currentUri, $"Redirects to a non-web address ({next.Scheme}:).");
+
+            currentUri = next;
+        }
+    }
+
+    private static bool IsRedirect(int statusCode) => statusCode is 301 or 302 or 303 or 307 or 308;
+
+    private static async Task<FetchResult> ReadResponseAsync(HttpResponseMessage response, Uri finalUri, CancellationToken cancellationToken)
+    {
         var statusCode = (int)response.StatusCode;
-        var finalUri = response.RequestMessage?.RequestUri ?? url;
 
         if (IsTransientStatus(statusCode))
-            throw new TransientCrawlException($"HTTP {statusCode} from {url}");
+            throw new TransientCrawlException($"HTTP {statusCode} from {finalUri}");
 
         if (!response.IsSuccessStatusCode)
             return FetchResult.HttpError(finalUri, statusCode);

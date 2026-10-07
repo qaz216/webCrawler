@@ -201,6 +201,8 @@ Tree node shape:
 - Depth: the root is depth `0`. Children are enqueued only while `depth < maxDepth`.
 - **HTML only.** A response is parsed only if its `Content-Type` is `text/html` or `application/xhtml+xml`. Anything else is stored as `Skipped (non-HTML)` with no links.
 - Redirects are followed (max 5). The **final** URL is the base for resolving relative links. Apart from the start page (above), redirects that leave the starting domain are not followed further.
+  - The fetcher follows redirects itself rather than relying on `HttpClient`, which refuses **https → http** downgrades. Real sites use them (scrapethissite.com's `/lessons/` redirects to an `http://` sign-up page), and for public pages without cookies following them is harmless. Each hop is a new connection, so the SSRF guard checks every one.
+  - A redirect loop (more than 5 hops) or a redirect to a non-web address (`mailto:` …) marks the page `Failed` with that reason.
 - **Max pages per job: 200** by default. The cap is enforced atomically in the DB (see below), so concurrent workers cannot overshoot it.
 
 **Normalization** (`UrlNormalizer`, the key to de-duplication)
