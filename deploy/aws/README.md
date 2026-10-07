@@ -77,6 +77,24 @@ cat /opt/webcrawler/SITE_URL
 - **Your own domain:** point a DNS A record at the instance, then add `SITE_ADDRESS=crawler.example.com`
   to `/opt/webcrawler/.env` and restart (`sudo systemctl restart webcrawler`).
 
+## Troubleshooting
+
+**"Refused to connect" in the browser, and `webcrawler.service failed` in the setup log.** Look at the cause:
+
+```bash
+sudo journalctl -u webcrawler.service --no-pager | tail -40
+```
+
+- **`no space left on device`**: the disk is the 8 GB default. In the console: instance → **Storage** tab →
+  volume → **Actions → Modify volume → 20 GiB**. Then **Stop** the instance and **Start** it. Ubuntu grows the
+  filesystem on boot, and the app builds and starts by itself.
+- **The build is killed or hangs**: the instance is a t3.micro (1 GB). **Stop → Actions → Instance settings →
+  Change instance type → t3.small → Start.**
+
+After a stop/start the public IP changes, so use the new `https://<ip-with-dashes>.sslip.io` address.
+Use the **dashed** form: the HTTPS certificate is issued for it. The dotted form also resolves, but the
+certificate won't match it.
+
 ## 4. Tear down
 
 **EC2 → Instances → Terminate.** That deletes the instance, its disk and all crawl data. If you created

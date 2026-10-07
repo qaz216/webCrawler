@@ -15,6 +15,14 @@ set -euo pipefail
 exec > >(tee -a /var/log/webcrawler-setup.log) 2>&1
 echo "=== Web Crawler setup started $(date -u) ==="
 
+# Building the images needs ~10 GB of disk and ~2 GB of RAM; the AWS defaults (8 GB, t3.micro) are too small.
+DISK_GB=$(( $(df --output=size -k / | tail -1) / 1024 / 1024 ))
+MEM_MB=$(( $(grep MemTotal /proc/meminfo | awk '{print $2}') / 1024 ))
+if [ "$DISK_GB" -lt 15 ] || [ "$MEM_MB" -lt 1800 ]; then
+  echo "WARNING: this instance has ${DISK_GB} GB disk and ${MEM_MB} MB RAM; at least 20 GB and a t3.small (2 GB) are needed."
+  echo "WARNING: the build will likely fail. Fix: grow the volume to 20 GB, stop, change type to t3.small, start."
+fi
+
 # Docker Engine + Compose + Buildx from Docker's official installer.
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
