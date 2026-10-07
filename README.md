@@ -29,7 +29,7 @@ A job-based web crawler made of event-driven microservices. A user submits a URL
 |----------------|------------------------------------------------------------|
 | Backend        | .NET 8, ASP.NET Core (minimal APIs), `BackgroundService` worker |
 | Broker         | RabbitMQ (with the management plugin)                       |
-| Database       | PostgreSQL 16, EF Core 8 (Npgsql)                           |
+| Database       | PostgreSQL 16, Npgsql + Dapper, plain SQL migrations        |
 | HTML parsing   | AngleSharp                                                  |
 | HTTP resilience| `Microsoft.Extensions.Http.Resilience` (Polly v8)           |
 | Logging        | Serilog, structured JSON to the console                     |
@@ -66,7 +66,7 @@ src/
                            # entities (CrawlJob, Page, PageLink), JobStatus state machine
   Crawler.Application/     # Use cases: CreateJob, GetJob, GetTree, ListHistory, CancelJob,
                            # ProcessPageTask; ports (interfaces) for repositories, publisher, fetcher
-  Crawler.Infrastructure/  # EF Core + migrations, RabbitMQ topology/publisher/consumer,
+  Crawler.Infrastructure/  # SQL migrations + Dapper store, RabbitMQ topology/publisher/consumer,
                            # HttpPageFetcher (+ resilience), outbox dispatcher
   Crawler.Api/             # Service A: REST endpoints, health checks, CORS, ProblemDetails
   Crawler.Worker/          # Service B: consumer host, outbox dispatcher, health endpoint
@@ -89,6 +89,7 @@ The dependency direction is `Api/Worker → Infrastructure → Application → D
 - **The worker owns writes for crawl results. The API owns job creation and all reads.** Both share one database through the Infrastructure layer. For a two-service system, a shared schema is pragmatic. A stricter split (the worker emits `PageCrawled` events and the API projects them) is listed under next steps.
 - **Transactional outbox.** Page results, edges, newly claimed child pages and the outgoing child tasks are written in **one DB transaction**. A dispatcher publishes the outbox rows to RabbitMQ afterwards. This closes the "committed to the DB but crashed before publishing" gap that would silently lose parts of the tree.
 - **The DB is the source of truth for de-duplication**, enforced with unique constraints rather than in-memory sets. Multiple worker instances and redeliveries are therefore safe.
+- **Dapper and hand-written SQL instead of EF Core.** The correctness-critical writes are `ON CONFLICT DO NOTHING`, `UPDATE … RETURNING`, `INSERT … SELECT … LIMIT` and `FOR UPDATE`. In SQL they're explicit and reviewable, whereas EF would hide them or need raw SQL anyway. Migrations are numbered `.sql` files embedded in the Infrastructure assembly and applied by a ~50-line migrator.
 
 ## Running locally
 
@@ -109,7 +110,7 @@ docker compose up --build
 | RabbitMQ management  | http://localhost:15672 (guest/guest)  |
 | PostgreSQL           | localhost:5432 (crawler/crawler)      |
 
-EF Core migrations are applied automatically on API startup (fine for local and demo use, but not for production). Docker Compose healthchecks gate start order: the API and worker wait for Postgres and RabbitMQ to be healthy.
+Database migrations (the embedded `.sql` scripts) are applied automatically on API startup, under a Postgres advisory lock so concurrent starts are safe. That's fine for local and demo use, but not for production. Docker Compose healthchecks gate start order: the API and worker wait for Postgres and RabbitMQ to be healthy.
 
 To develop without containers for the apps:
 
@@ -245,13 +246,16 @@ The system assumes at-least-once delivery. Every write is safe to repeat:
 
 | Mechanism | Protects against |
 |-----------|------------------|
-| `UNIQUE (job_id, normalized_url)` on `pages`. A child page is **claimed** with `INSERT … ON CONFLICT DO NOTHING RETURNING id`, and a task is enqueued **only if the insert returned a row**. | Re-processing the same URL within a job, both from different parents and from redelivery |
-| `UNIQUE (from_page_id, to_normalized_url)` on `page_links`. Edges are inserted with `ON CONFLICT DO NOTHING`. | Duplicate edges when a task is processed twice |
-| A page state guard. Processing starts with `UPDATE pages SET status='Processing', lease_until=now()+interval '2 min' WHERE id=@id AND (status='Pending' OR (status='Processing' AND lease_until < now()))`. Zero rows updated → **ack and skip**. | Two consumers working the same task at once, and duplicates of a page that's already finished |
-| Results, edges, child claims, the job counter updates and outbox rows commit in **one transaction** that also sets the page to `Completed`. | Partial writes. A crash before commit means redelivery redoes everything safely. A crash after commit means redelivery hits the guard and is skipped. |
-| The outbox uses a deterministic `messageId` (job + URL), and the dispatcher marks rows sent only after the publisher confirm. A duplicate publish is absorbed by the guard above. | Duplicate publishes from the outbox dispatcher |
-| Job completion is a conditional update: `UPDATE crawl_jobs SET status='Completed' … WHERE id=@id AND status='Running' AND pages_pending = 0`. | Double completion, and racing workers |
-| The max-pages cap is an atomic counter: `UPDATE crawl_jobs SET pages_discovered = pages_discovered + 1 WHERE id=@id AND pages_discovered < max_pages RETURNING …` | Overshooting the cap under concurrency |
+| `UNIQUE (job_id, url)` on `pages` (the URL is stored normalized). Child pages are **claimed** with `INSERT … ON CONFLICT DO NOTHING RETURNING id`, and a task is queued **only for rows the insert returned**. | Re-processing the same URL within a job, both from different parents and from redelivery |
+| `UNIQUE (from_page_id, to_url)` on `page_links`. Edges are inserted with `ON CONFLICT DO NOTHING`. | Duplicate edges when a task is processed twice |
+| A **page lease**. Processing starts with `UPDATE pages SET status='Processing', lease_until=now()+'2 min' WHERE id=@id AND (status='Pending' OR (status='Processing' AND lease_until < now()))` (and the job is still active). If no row was updated, the store works out why: page already finished → **ack and skip**; leased by another consumer → **transient** (retry later); job canceled → **ack and drop**; page unknown → **poison**. | Two consumers working the same task at once, and duplicates of a page that's already finished |
+| On a transient failure the handler **releases** the lease (back to `Pending`) before rethrowing, so the retried delivery can take the page at once. If the release itself fails, the lease simply expires. | A retried delivery being blocked by its own earlier attempt |
+| The page result, edges, child claims, their outbox tasks, the job counters and job completion commit in **one transaction**. Its first statement moves the page to its final status only `WHERE status IN ('Pending','Processing')`. If that touches 0 rows, the transaction stops: it was a duplicate. | Partial writes. A crash before commit means redelivery redoes everything safely. A crash after commit means redelivery hits the guard and is skipped. |
+| The outbox message id is the **page id**, so it's unique per (job, URL) and `ON CONFLICT DO NOTHING` protects it. The dispatcher marks rows sent only after the publisher confirm. A duplicate publish is absorbed by the lease and status guards. | Duplicate publishes from the outbox dispatcher |
+| Job completion is a conditional update: `… SET status='Completed' WHERE id=@id AND status IN ('Pending','Running') AND pages_completed + pages_failed >= pages_discovered`. | Double completion, and racing workers |
+| The page cap: the completing transaction takes `SELECT … FROM crawl_jobs … FOR UPDATE`, then claims at most `max_pages - pages_discovered` new URLs (`INSERT … SELECT … WHERE NOT EXISTS … LIMIT @remaining`). Child claiming is therefore serialized per job, and only per job: different jobs never block each other. | Overshooting the cap under concurrency |
+
+These guarantees are covered by integration tests against a real PostgreSQL in [`tests/Crawler.IntegrationTests`](tests/Crawler.IntegrationTests): sequential duplicate delivery, 5 concurrent deliveries of the same task, the page cap, transient retry, canceled jobs and poison messages.
 
 ### Retry policy
 
@@ -283,36 +287,37 @@ DLQ'd messages carry `x-death` plus an `x-error` header (exception type and mess
 
 ## Data model and performance
 
+The full schema, with comments, is in [`0001_initial_schema.sql`](src/Crawler.Infrastructure/Persistence/Migrations/0001_initial_schema.sql). In summary:
+
 ```sql
 crawl_jobs(
   id uuid PK, url text, root_host text, max_depth int, max_pages int,
-  status text, failure_reason text,
-  created_at timestamptz, started_at timestamptz, completed_at timestamptz,
-  pages_discovered int, pages_completed int, pages_failed int, pages_pending int,
-  row_version xmin                                -- optimistic concurrency
+  status text CHECK (...), failure_reason text,
+  created_at, started_at, completed_at timestamptz,
+  pages_discovered int, pages_completed int,      -- completed includes Skipped
+  pages_failed int
 )
-  INDEX ix_jobs_created_at (created_at DESC, id)  -- history, keyset-friendly
+  INDEX ix_crawl_jobs_created_at (created_at DESC, id DESC)   -- history, keyset-friendly
 
 pages(
-  id uuid PK, job_id uuid FK, url text, normalized_url text, depth int,
-  parent_page_id uuid NULL,                       -- first discoverer → tree shape
-  status text, http_status int, content_type text, error text,
+  id uuid PK, job_id uuid FK, url text,           -- url is the normalized URL
+  depth int, parent_page_id uuid NULL,            -- first discoverer → tree shape
+  status text CHECK (...), http_status int, content_type text, error text,
   domain_link_ratio numeric(5,4), outgoing_link_count int,
-  lease_until timestamptz, fetched_at timestamptz
+  attempts int, lease_until timestamptz, discovered_at, finished_at timestamptz
 )
-  UNIQUE ux_pages_job_url (job_id, normalized_url)
-  INDEX ix_pages_job_parent (job_id, parent_page_id)
+  UNIQUE ux_pages_job_url (job_id, url)           -- de-dup key; also serves the tree query
 
 page_links(                                       -- every outgoing edge, incl. external
-  id bigserial PK, job_id uuid, from_page_id uuid FK,
-  to_normalized_url text, to_page_id uuid NULL,   -- set when the target is a crawled page
+  id bigint identity PK, job_id uuid FK, from_page_id uuid FK,
+  to_url text, to_page_id uuid NULL,              -- set when the target is a page of this job
   is_internal bool
 )
-  UNIQUE ux_links_from_to (from_page_id, to_normalized_url)
-  INDEX ix_links_job (job_id)
+  UNIQUE ux_page_links_from_to (from_page_id, to_url)
+  INDEX ix_page_links_job (job_id)
 
-outbox_messages(id uuid PK, type text, payload jsonb, created_at, sent_at NULL)
-  INDEX ix_outbox_unsent (created_at) WHERE sent_at IS NULL   -- partial index
+outbox_messages(id uuid PK, message_type text, payload jsonb, correlation_id uuid, created_at, sent_at NULL)
+  INDEX ix_outbox_messages_unsent (created_at) WHERE sent_at IS NULL   -- partial index
 ```
 
 Notes:

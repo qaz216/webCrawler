@@ -1,0 +1,63 @@
+using Crawler.Domain.Jobs;
+
+namespace Crawler.Application.Abstractions;
+
+/// <summary>
+/// Write side of crawl persistence. Each method is one atomic, idempotent unit of work,
+/// so a message delivered more than once can never create duplicate rows.
+/// </summary>
+public interface ICrawlStore
+{
+    /// <summary>Creates the job, its root page and the root task (outbox) in one transaction.</summary>
+    Task<CreatedJob> CreateJobAsync(NewJob job, CancellationToken cancellationToken);
+
+    /// <summary>Takes ownership of a page for processing, if it is still pending and its job is active.</summary>
+    Task<LeaseResult> TryLeasePageAsync(Guid pageId, TimeSpan lease, CancellationToken cancellationToken);
+
+    /// <summary>Gives a leased page back (status Pending) so a retried delivery can take it immediately.</summary>
+    Task ReleasePageAsync(Guid pageId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Records a page result in one transaction: page row, edges, newly claimed child pages
+    /// (respecting the job's page cap), their outbox tasks, job counters and job completion.
+    /// Returns false if the page had already reached a terminal state (duplicate delivery).
+    /// </summary>
+    Task<bool> CompletePageAsync(PageOutcome outcome, CancellationToken cancellationToken);
+}
+
+public sealed record NewJob(string Url, string RootHost, int MaxDepth, int MaxPages);
+
+public sealed record CreatedJob(Guid JobId, Guid RootPageId);
+
+public enum LeaseOutcome
+{
+    Leased,
+    AlreadyFinished,
+    LeasedElsewhere,
+    JobNotActive,
+    NotFound,
+}
+
+public sealed record LeasedPage(Guid PageId, Guid JobId, string Url, int Depth, int MaxDepth, string RootHost);
+
+public sealed record LeaseResult(LeaseOutcome Outcome, LeasedPage? Page = null);
+
+public sealed record DiscoveredLink(string Url, bool IsInternal);
+
+public sealed record PageOutcome(
+    Guid PageId,
+    PageStatus Status,
+    int? HttpStatus = null,
+    string? ContentType = null,
+    string? Error = null,
+    double? DomainLinkRatio = null,
+    IReadOnlyList<DiscoveredLink>? Links = null,
+    IReadOnlyList<string>? ChildUrls = null)
+{
+    public IReadOnlyList<DiscoveredLink> Links { get; init; } = Links ?? [];
+
+    public IReadOnlyList<string> ChildUrls { get; init; } = ChildUrls ?? [];
+
+    public static PageOutcome Failed(Guid pageId, string error, int? httpStatus = null) =>
+        new(pageId, PageStatus.Failed, httpStatus, Error: error);
+}
