@@ -31,12 +31,12 @@ describe("PageTree", () => {
     expect(screen.getByRole("link", { name: "8 links" })).toHaveAttribute("href", "/jobs/job-1/pages/root");
   });
 
-  it("starts collapsed below the first level and expands on demand", () => {
+  it("starts fully expanded; nodes, Collapse all and Expand all toggle it", () => {
     render(tree(sampleTree));
-    expect(screen.queryByRole("link", { name: "/team.html" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "/team.html" })).toBeInTheDocument(); // depth 2, open by default
 
-    fireEvent.click(screen.getByRole("button", { name: "Expand https://site.test/about.html" }));
-    expect(screen.getByRole("link", { name: "/team.html" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse https://site.test/about.html" }));
+    expect(screen.queryByRole("link", { name: "/team.html" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
     expect(screen.queryByRole("link", { name: "/about.html" })).not.toBeInTheDocument();
@@ -45,15 +45,15 @@ describe("PageTree", () => {
     expect(screen.getByRole("link", { name: "/team.html" })).toBeInTheDocument();
   });
 
-  it("expands the top level by default even when its children arrive later", () => {
+  it("expands pages by default even when their children arrive later", () => {
     // First render: the crawl has only the start page so far.
     const { rerender } = render(tree({ ...sampleTree, children: [] }));
     expect(screen.queryByRole("link", { name: "/about.html" })).not.toBeInTheDocument();
 
-    // Next poll: children were discovered — the top level opens, deeper levels stay closed.
+    // Next poll: children were discovered — every level opens.
     rerender(tree(sampleTree));
     expect(screen.getByRole("link", { name: "/about.html" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "/team.html" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "/team.html" })).toBeInTheDocument();
   });
 
   it("remembers that the user collapsed the top level", () => {

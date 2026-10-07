@@ -12,7 +12,7 @@ interface PageTreeProps {
   /** The crawl job, for links to each page's detail view. */
   jobId: string;
   root: PageTreeNode;
-  /** Levels expanded initially (root = depth 0). */
+  /** Levels expanded by default (root = depth 0); all of them unless limited. */
   initialDepth?: number;
   /** Reveal and highlight this page (e.g. clicked in the graph). The nonce allows re-focusing the same page. */
   focus?: { pageId: string; nonce: number } | null;
@@ -23,8 +23,8 @@ interface PageTreeProps {
  * link count; duplicates link to their original, expanding the tree to reveal it. Pages that
  * appear while the crawl runs are briefly highlighted.
  */
-export function PageTree({ jobId, root, initialDepth = 1, focus }: PageTreeProps) {
-  // Expansion = a default by depth (top level open, the rest closed) plus the user's explicit choices.
+export function PageTree({ jobId, root, initialDepth = Infinity, focus }: PageTreeProps) {
+  // Expansion = a default by depth (everything open) plus the user's explicit choices.
   // Keeping only the overrides means pages that appear later (while the crawl runs, or when the
   // tree first loads before the start page has children) still get the default.
   const [overrides, setOverrides] = useState<ReadonlyMap<string, boolean>>(() => new Map());
