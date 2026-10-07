@@ -27,7 +27,7 @@ export default function SiteGraph({ root, live, onSelectPage }: SiteGraphProps) 
   const nodeCache = useRef(new Map<string, Node>());
   const fitted = useRef(false);
   const [width, setWidth] = useState(600);
-  const { resolved: theme } = useTheme();
+  const { theme } = useTheme();
 
   // Keep the container width in sync (the canvas needs explicit pixel sizes).
   useEffect(() => {

@@ -41,41 +41,7 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* Dark palette: applied by the OS setting unless the user picked light, or by the toggle. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0b0d14;
-    --bg-accent: radial-gradient(1200px 500px at 15% -10%, rgb(99 102 241 / 18%), transparent 60%),
-                 radial-gradient(900px 400px at 95% 0%, rgb(6 182 212 / 12%), transparent 60%);
-    --surface: #131722;
-    --surface-2: #181d2a;
-    --border: #262c3b;
-    --text: #e8ebf3;
-    --muted: #98a2b6;
-    --accent: #8b8cff;
-    --accent-2: #22d3ee;
-    --accent-text: #0b0d14;
-    --accent-soft: #1e2142;
-    --danger: #ff7a70;
-    --danger-soft: #3a1d1f;
-    --warning-soft: #3a2f14;
-    --warning: #f3c56b;
-    --highlight: #4a4113;
-    --fresh: #14351f;
-    --graph-edge: rgb(148 163 184 / 25%);
-    --graph-inactive: #4f586b;
-    --s-gray-bg: #232937;   --s-gray-fg: #b4bfcd;
-    --s-blue-bg: #22265a;   --s-blue-fg: #b3b6ff;
-    --s-green-bg: #133524;  --s-green-fg: #7fd8a2;
-    --s-red-bg: #3a1d1f;    --s-red-fg: #ff9a9a;
-    --s-amber-bg: #3a2f14;  --s-amber-fg: #f3c56b;
-    --s-purple-bg: #2c2152; --s-purple-fg: #c9b6ff;
-    --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 8px 24px -12px rgb(0 0 0 / 60%);
-    --shadow-lg: 0 24px 60px -20px rgb(99 102 241 / 40%);
-    color-scheme: dark;
-  }
-}
-
+/* Dark palette: applied by the sun/moon toggle (data-theme="dark" on <html>). */
 :root[data-theme="dark"] {
   --bg: #0b0d14;
   --bg-accent: radial-gradient(1200px 500px at 15% -10%, rgb(99 102 241 / 18%), transparent 60%),

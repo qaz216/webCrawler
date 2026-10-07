@@ -1,7 +1,7 @@
-import { History, Monitor, Moon, Radar, ScanSearch, Sun } from "lucide-react";
+import { History, Moon, Radar, ScanSearch, Sun } from "lucide-react";
 import { Link, NavLink, Route, Routes } from "react-router";
 import { EmptyState } from "./components/Feedback";
-import { useTheme, type ThemePreference } from "./lib/theme";
+import { useTheme } from "./lib/theme";
 import { HistoryPage } from "./pages/HistoryPage";
 import { JobDetailsPage } from "./pages/JobDetailsPage";
 import { StartCrawlPage } from "./pages/StartCrawlPage";
@@ -37,17 +37,15 @@ export function App() {
   );
 }
 
-const NEXT: Record<ThemePreference, ThemePreference> = { system: "light", light: "dark", dark: "system" };
-const LABEL: Record<ThemePreference, string> = { system: "System theme", light: "Light theme", dark: "Dark theme" };
-
+/** Sun in light mode, moon in dark mode; each click switches between the two. */
 function ThemeToggle() {
-  const { preference, setPreference } = useTheme();
-  const Icon = preference === "light" ? Sun : preference === "dark" ? Moon : Monitor;
+  const { theme, toggleTheme } = useTheme();
+  const next = theme === "light" ? "dark" : "light";
 
   return (
-    <button type="button" className="icon-button theme-toggle" onClick={() => setPreference(NEXT[preference])}
-      title={`${LABEL[preference]} (click to change)`} aria-label={`${LABEL[preference]}. Switch to ${LABEL[NEXT[preference]].toLowerCase()}`}>
-      <Icon size={18} aria-hidden="true" />
+    <button type="button" className="icon-button theme-toggle" onClick={toggleTheme}
+      title={`Switch to ${next} mode`} aria-label={`Switch to ${next} mode`}>
+      {theme === "light" ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
     </button>
   );
 }
