@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Net.Http.Headers;
 using System.Text;
 using Crawler.Application;
@@ -20,7 +21,13 @@ namespace Crawler.Infrastructure.Http;
 /// </summary>
 public sealed class HttpPageFetcher(HttpClient httpClient, IOptions<HttpFetchOptions>? options = null) : IPageFetcher
 {
-    public const int MaxBodyBytes = 2 * 1024 * 1024;
+    /// <summary>
+    /// Large news homepages are 5–7 MB, mostly inline scripts and styles before the first link
+    /// (www.cnn.com: 5.6 MB, links start after ~2 MB), so the cap must comfortably exceed that.
+    /// </summary>
+    public const int MaxBodyBytes = 10 * 1024 * 1024;
+
+    private const int ReadChunkBytes = 81_920;
 
     private static readonly string[] HtmlMediaTypes = ["text/html", "application/xhtml+xml"];
 
@@ -127,17 +134,25 @@ public sealed class HttpPageFetcher(HttpClient httpClient, IOptions<HttpFetchOpt
     {
         await using var stream = await content.ReadAsStreamAsync(cancellationToken);
 
-        var buffer = new byte[MaxBodyBytes];
-        var total = 0;
-        int read;
-        while (total < buffer.Length &&
-               (read = await stream.ReadAsync(buffer.AsMemory(total), cancellationToken)) > 0)
+        // Grows with the page (a 20 KB page uses ~20 KB), instead of reserving the full cap up front.
+        using var body = new MemoryStream();
+        var chunk = ArrayPool<byte>.Shared.Rent(ReadChunkBytes);
+        try
         {
-            total += read;
+            int read;
+            while (body.Length < MaxBodyBytes &&
+                   (read = await stream.ReadAsync(chunk.AsMemory(0, (int)Math.Min(chunk.Length, MaxBodyBytes - body.Length)), cancellationToken)) > 0)
+            {
+                body.Write(chunk, 0, read);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(chunk);
         }
 
-        // Anything past the cap is ignored: links in the first 2 MB are still extracted.
-        return GetEncoding(contentType?.CharSet).GetString(buffer, 0, total);
+        // Anything past the cap is ignored; links in the first 10 MB are still extracted.
+        return GetEncoding(contentType?.CharSet).GetString(body.GetBuffer(), 0, (int)body.Length);
     }
 
     private static Encoding GetEncoding(string? charset)

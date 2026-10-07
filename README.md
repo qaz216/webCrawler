@@ -231,7 +231,8 @@ ratio = (# outgoing links whose host == starting domain) / (total # outgoing lin
 **HTTP**
 - `HttpClient` timeout of 10s per attempt, with an overall budget of 30s per page.
 - Retries: 3 attempts with exponential backoff and jitter, on transient failures only (see below).
-- A `User-Agent` that identifies the crawler. Response bodies are capped at 2 MB.
+- A `User-Agent` that identifies the crawler.
+- Response bodies are capped at **10 MB**, read in chunks into a buffer that grows with the page. Large news homepages are 5–7 MB, mostly inline scripts and styles before the first link: on www.cnn.com (5.6 MB) the links only start after about 2 MB.
 
 ## Messaging
 
