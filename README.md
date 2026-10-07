@@ -149,6 +149,12 @@ Alternatively, run them inside a Linux SDK container, as CI would. This is usefu
 docker run --rm -v "$PWD:/src:ro" -v /var/run/docker.sock:/var/run/docker.sock -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal mcr.microsoft.com/dotnet/sdk:8.0 sh /src/scripts/test-in-docker.sh
 ```
 
+## Deploying (AWS demo)
+
+A single small EC2 instance (t3.small, about $20/month while running) runs the same Compose stack. It adds [`docker-compose.prod.yml`](docker-compose.prod.yml), in which Caddy provides automatic HTTPS and a login and no internal ports are exposed. Paste [`deploy/aws/user-data.sh`](deploy/aws/user-data.sh) when launching the instance and it sets everything up. The step-by-step console guide is in [`deploy/aws/README.md`](deploy/aws/README.md).
+
+Because anyone could submit a URL, the worker has **SSRF protection** ([`PrivateNetworkGuard.cs`](src/Crawler.Infrastructure/Http/PrivateNetworkGuard.cs)). It resolves each host itself and refuses private, loopback and link-local addresses, including the cloud metadata service `169.254.169.254`, on every connection and redirect hop. Such pages fail at once with a clear reason and are never retried. To crawl a site on your own network, set `HttpFetch__BlockPrivateNetworks=false`.
+
 ## API
 
 All routes live under `/api`, and Swagger UI is at `/swagger`. Errors use RFC 7807 `ProblemDetails`: validation failures are `400` with per-field `errors`, an unknown job is `404`, and canceling a finished job is `409`. Every problem includes a `correlationId`. Responses echo `X-Correlation-Id`: send one to tie your request to the API's logs, or the API generates one. Enums are serialized as strings. Code: [`JobEndpoints.cs`](src/Crawler.Api/Endpoints/JobEndpoints.cs).

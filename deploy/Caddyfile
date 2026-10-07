@@ -1,0 +1,20 @@
+# Reverse proxy in front of the web container (which serves the UI and proxies /api).
+# SITE_ADDRESS is a hostname (e.g. 3-91-12-34.sslip.io) to get automatic Let's Encrypt HTTPS,
+# or ":80" for plain HTTP. Everything sits behind a login so the crawler isn't open to the internet.
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	basic_auth {
+		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	reverse_proxy web:80
+}

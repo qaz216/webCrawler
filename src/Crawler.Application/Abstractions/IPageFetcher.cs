@@ -14,10 +14,16 @@ public enum FetchKind
     Html,
     NotHtml,
     HttpError,
+
+    /// <summary>Not fetched by policy (e.g. the host resolves to a private network address).</summary>
+    Refused,
 }
 
-public sealed record FetchResult(FetchKind Kind, Uri FinalUri, int StatusCode, string? ContentType, string? Html)
+public sealed record FetchResult(FetchKind Kind, Uri FinalUri, int StatusCode, string? ContentType, string? Html, string? Error = null)
 {
+    public static FetchResult Refused(Uri url, string reason) =>
+        new(FetchKind.Refused, url, 0, null, null, reason);
+
     public static FetchResult FromHtml(Uri finalUri, int statusCode, string? contentType, string html) =>
         new(FetchKind.Html, finalUri, statusCode, contentType, html);
 

@@ -87,6 +87,9 @@ public sealed class PageTaskHandler(
 
     internal static PageOutcome BuildOutcome(LeasedPage page, FetchResult fetch)
     {
+        if (fetch.Kind == FetchKind.Refused)
+            return PageOutcome.Failed(page.PageId, fetch.Error ?? "Refused");
+
         if (fetch.Kind == FetchKind.HttpError)
             return PageOutcome.Failed(page.PageId, $"HTTP {fetch.StatusCode}", fetch.StatusCode);
 

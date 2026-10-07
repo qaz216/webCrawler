@@ -15,5 +15,11 @@ public sealed class HttpFetchOptions
 
     public int MaxRedirects { get; set; } = 5;
 
+    /// <summary>
+    /// SSRF protection: refuse hosts that resolve to private, loopback or link-local addresses
+    /// (incl. cloud metadata). On by default; turn off only to crawl a site on your own network.
+    /// </summary>
+    public bool BlockPrivateNetworks { get; set; } = true;
+
     public string UserAgent { get; set; } = "WebCrawler/1.0 (+https://github.com/qaz216/webCrawler)";
 }

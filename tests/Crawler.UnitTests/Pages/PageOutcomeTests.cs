@@ -74,6 +74,17 @@ public class PageOutcomeTests
     }
 
     [Fact]
+    public void Refused_destinations_fail_the_page_with_the_reason()
+    {
+        var fetch = FetchResult.Refused(new Uri("http://169.254.169.254/"), "169.254.169.254 resolves to a private or internal network address; not crawled.");
+
+        var outcome = PageTaskHandler.BuildOutcome(Page(depth: 1), fetch);
+
+        Assert.Equal(PageStatus.Failed, outcome.Status);
+        Assert.Contains("private or internal", outcome.Error);
+    }
+
+    [Fact]
     public void Http_errors_fail_the_page()
     {
         var outcome = PageTaskHandler.BuildOutcome(Page(depth: 1), FetchResult.HttpError(new Uri("https://example.com/x"), 404));

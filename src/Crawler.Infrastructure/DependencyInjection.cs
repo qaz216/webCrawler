@@ -69,12 +69,20 @@ public static class DependencyInjection
                 client.DefaultRequestHeaders.UserAgent.ParseAdd(options.UserAgent);
                 client.Timeout = Timeout.InfiniteTimeSpan; // the resilience pipeline owns timeouts
             })
-            .ConfigurePrimaryHttpMessageHandler(sp => new SocketsHttpHandler
+            .ConfigurePrimaryHttpMessageHandler(sp =>
             {
-                AllowAutoRedirect = true,
-                MaxAutomaticRedirections = sp.GetRequiredService<IOptions<HttpFetchOptions>>().Value.MaxRedirects,
-                AutomaticDecompression = DecompressionMethods.All,
-                PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+                var options = sp.GetRequiredService<IOptions<HttpFetchOptions>>().Value;
+                var handler = new SocketsHttpHandler
+                {
+                    AllowAutoRedirect = true,
+                    MaxAutomaticRedirections = options.MaxRedirects,
+                    AutomaticDecompression = DecompressionMethods.All,
+                    PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+                };
+                // Every connection (including each redirect hop) goes through the SSRF check.
+                if (options.BlockPrivateNetworks)
+                    handler.ConnectCallback = PrivateNetworkGuard.ConnectAsync;
+                return handler;
             })
             .AddResilienceHandler("page-fetch", (pipeline, context) =>
             {
@@ -90,6 +98,10 @@ public static class DependencyInjection
                         Delay = options.RetryBaseDelay,
                         BackoffType = DelayBackoffType.Exponential,
                         UseJitter = true,
+                        // A blocked (private-network) destination will never succeed: don't retry it.
+                        ShouldHandle = args => ValueTask.FromResult(
+                            HttpPageFetcher.FindBlocked(args.Outcome.Exception) is null
+                            && HttpClientResiliencePredicates.IsTransient(args.Outcome)),
                     });
                 }
                 pipeline.AddTimeout(options.AttemptTimeout);

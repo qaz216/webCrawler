@@ -23,7 +23,17 @@ public sealed class HttpPageFetcher(HttpClient httpClient) : IPageFetcher
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Accept.ParseAdd("text/html,application/xhtml+xml;q=0.9,*/*;q=0.1");
 
-        using var response = await SendAsync(request, cancellationToken);
+        HttpResponseMessage sent;
+        try
+        {
+            sent = await SendAsync(request, cancellationToken);
+        }
+        catch (BlockedDestinationException blocked)
+        {
+            return FetchResult.Refused(url, blocked.Message);
+        }
+
+        using var response = sent;
 
         var statusCode = (int)response.StatusCode;
         var finalUri = response.RequestMessage?.RequestUri ?? url;
@@ -45,11 +55,25 @@ public sealed class HttpPageFetcher(HttpClient httpClient) : IPageFetcher
     public static bool IsTransientStatus(int statusCode) =>
         statusCode is 408 or 429 || statusCode >= 500;
 
+    internal static BlockedDestinationException? FindBlocked(Exception? exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is BlockedDestinationException blocked)
+                return blocked;
+        }
+        return null;
+    }
+
     private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         try
         {
             return await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        }
+        catch (HttpRequestException ex) when (FindBlocked(ex) is { } blocked)
+        {
+            throw blocked; // permanent: FetchAsync turns it into a Refused result, no retries
         }
         catch (HttpRequestException ex)
         {

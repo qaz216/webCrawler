@@ -1,0 +1,16 @@
+[Unit]
+Description=Web Crawler (Docker Compose stack)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/webcrawler
+ExecStart=/opt/webcrawler/deploy/aws/start.sh
+ExecStop=/usr/bin/docker compose -f docker-compose.yml -f docker-compose.prod.yml down
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=multi-user.target

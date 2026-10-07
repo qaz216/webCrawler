@@ -1,11 +1,19 @@
 name: webcrawler
 
+# Local development stack. Credentials default to throwaway values; override them via environment
+# variables or a .env file (the AWS setup generates random ones — see deploy/aws/README.md).
+# For a server, add docker-compose.prod.yml: it closes these ports and puts Caddy (HTTPS + login) in front.
+
+x-app-env: &app-env
+  ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=crawler;Username=crawler;Password=${POSTGRES_PASSWORD:-crawler}
+  RabbitMq__Uri: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD:-guest}@rabbitmq:5672/
+
 services:
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: crawler
-      POSTGRES_PASSWORD: crawler
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-crawler}
       POSTGRES_DB: crawler
     ports:
       - "5432:5432"
@@ -21,8 +29,8 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
     ports:
       - "5672:5672"    # AMQP
       - "15672:15672"  # management UI
@@ -39,9 +47,7 @@ services:
     build:
       context: .
       dockerfile: src/Crawler.Api/Dockerfile
-    environment:
-      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=crawler;Username=crawler;Password=crawler
-      RabbitMq__Uri: amqp://guest:guest@rabbitmq:5672/
+    environment: *app-env
     ports:
       - "8080:8080"    # REST API, /swagger, /health/live, /health/ready
     depends_on:
@@ -55,9 +61,7 @@ services:
     build:
       context: .
       dockerfile: src/Crawler.Worker/Dockerfile
-    environment:
-      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=crawler;Username=crawler;Password=crawler
-      RabbitMq__Uri: amqp://guest:guest@rabbitmq:5672/
+    environment: *app-env
     ports:
       - "8081:8080"    # /health/live, /health/ready
     depends_on:
