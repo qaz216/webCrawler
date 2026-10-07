@@ -14,9 +14,13 @@ public interface ICrawlQueries
     Task<PagedResult<JobListItem>> ListJobsAsync(int page, int pageSize, CancellationToken cancellationToken);
 }
 
+/// <param name="StartingDomain">
+/// Host whose links count as internal: the job URL's host, or where the start page redirected to.
+/// </param>
 public sealed record JobDetails(
     Guid JobId,
     string Url,
+    string StartingDomain,
     JobStatus Status,
     int MaxDepth,
     int MaxPages,

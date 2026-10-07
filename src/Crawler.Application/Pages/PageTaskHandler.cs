@@ -84,21 +84,31 @@ public sealed class PageTaskHandler(
         if (fetch.Kind == FetchKind.HttpError)
             return PageOutcome.Failed(page.PageId, $"HTTP {fetch.StatusCode}", fetch.StatusCode);
 
-        if (!DomainLinkRatio.IsInternal(fetch.FinalUri.AbsoluteUri, page.RootHost))
+        // The start page decides where the site lives: if it redirects to another host
+        // (google.com → www.google.com), that host becomes the job's starting domain.
+        // Any other page that redirects off the starting domain is outside the crawl.
+        var rootHost = page.RootHost;
+        string? newRootHost = null;
+        if (!DomainLinkRatio.IsInternal(fetch.FinalUri.AbsoluteUri, rootHost))
         {
-            return new PageOutcome(page.PageId, PageStatus.Skipped, fetch.StatusCode, fetch.ContentType,
-                Error: $"Redirected off-domain to {fetch.FinalUri.Host}");
+            if (page.Depth > 0)
+            {
+                return new PageOutcome(page.PageId, PageStatus.Skipped, fetch.StatusCode, fetch.ContentType,
+                    Error: $"Redirected off-domain to {fetch.FinalUri.Host}");
+            }
+
+            rootHost = newRootHost = fetch.FinalUri.Host;
         }
 
         if (fetch.Kind == FetchKind.NotHtml)
         {
             return new PageOutcome(page.PageId, PageStatus.Skipped, fetch.StatusCode, fetch.ContentType,
-                Error: $"Not HTML ({fetch.ContentType ?? "no content type"})");
+                Error: $"Not HTML ({fetch.ContentType ?? "no content type"})", NewRootHost: newRootHost);
         }
 
         var links = LinkExtractor.Extract(fetch.Html!, fetch.FinalUri);
         var discovered = links
-            .Select(url => new DiscoveredLink(url, DomainLinkRatio.IsInternal(url, page.RootHost)))
+            .Select(url => new DiscoveredLink(url, DomainLinkRatio.IsInternal(url, rootHost)))
             .ToList();
 
         var children = page.Depth < page.MaxDepth
@@ -110,10 +120,11 @@ public sealed class PageTaskHandler(
             PageStatus.Completed,
             fetch.StatusCode,
             fetch.ContentType,
-            DomainLinkRatio: DomainLinkRatio.Calculate(links, page.RootHost),
+            DomainLinkRatio: DomainLinkRatio.Calculate(links, rootHost),
             Links: discovered,
             ChildUrls: children,
-            ContentHash: ContentFingerprint.Compute(fetch.Html!));
+            ContentHash: ContentFingerprint.Compute(fetch.Html!),
+            NewRootHost: newRootHost);
     }
 
     private async Task ReleaseQuietlyAsync(Guid pageId)

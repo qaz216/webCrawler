@@ -161,6 +161,16 @@ public sealed class CrawlStore(NpgsqlDataSource dataSource) : ICrawlStore
         if (page is null)
             return PageCompletion.AlreadyFinished;
 
+        // The start page redirected to another host: that host is now the job's starting domain
+        // (before children are claimed, so their tasks carry it too).
+        if (page.ParentPageId is null && outcome.NewRootHost is { } newRootHost)
+        {
+            await connection.ExecuteAsync(Command(
+                "UPDATE crawl_jobs SET root_host = @newRootHost WHERE id = @jobId",
+                new { newRootHost, jobId = page.JobId }));
+            job.RootHost = newRootHost;
+        }
+
         // 4. Edges (all outgoing links, internal and external).
         if (outcome.Links.Count > 0)
         {

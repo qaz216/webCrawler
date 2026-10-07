@@ -14,6 +14,13 @@ public sealed class FixtureSiteHandler : HttpMessageHandler
     public const string Host = "site.test";
     public static readonly Uri Root = new($"https://{Host}/");
 
+    /// <summary>
+    /// Behaves like a host that redirects everything to <see cref="Host"/> (as google.com → www.google.com):
+    /// the response is site.test's, and its final request URI is the site.test URL — exactly what
+    /// HttpClient reports after following a real redirect.
+    /// </summary>
+    public const string RedirectingHost = "alias.test";
+
     private static readonly string SiteRoot = Path.Combine(AppContext.BaseDirectory, "Fixtures", "site");
 
     private readonly ConcurrentDictionary<string, int> _requests = new();
@@ -25,6 +32,12 @@ public sealed class FixtureSiteHandler : HttpMessageHandler
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var uri = request.RequestUri!;
+        if (string.Equals(uri.Host, RedirectingHost, StringComparison.OrdinalIgnoreCase))
+        {
+            uri = new UriBuilder(uri) { Host = Host }.Uri;
+            request = new HttpRequestMessage(request.Method, uri);
+        }
+
         var count = _requests.AddOrUpdate(uri.AbsolutePath, 1, (_, n) => n + 1);
 
         var response = Respond(uri, count);

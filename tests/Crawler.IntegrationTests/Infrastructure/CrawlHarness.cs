@@ -44,11 +44,11 @@ public sealed class CrawlHarness
 
     public PageTaskHandler Handler { get; }
 
-    public Task<CreatedJob> StartJobAsync(string path = "/", int maxDepth = 2, int maxPages = 200)
-    {
-        var url = new Uri(FixtureSiteHandler.Root, path).AbsoluteUri;
-        return Store.CreateJobAsync(new NewJob(url, FixtureSiteHandler.Host, maxDepth, maxPages), CancellationToken.None);
-    }
+    public Task<CreatedJob> StartJobAsync(string path = "/", int maxDepth = 2, int maxPages = 200) =>
+        StartJobAtAsync(new Uri(FixtureSiteHandler.Root, path), maxDepth, maxPages);
+
+    public Task<CreatedJob> StartJobAtAsync(Uri url, int maxDepth = 2, int maxPages = 200) =>
+        Store.CreateJobAsync(new NewJob(url.AbsoluteUri, url.Host, maxDepth, maxPages), CancellationToken.None);
 
     /// <summary>Takes the pending tasks for a job out of the outbox (as the dispatcher would).</summary>
     public async Task<IReadOnlyList<CrawlPageTask>> DequeueTasksAsync(Guid jobId)
@@ -113,7 +113,10 @@ public sealed class CrawlHarness
              WHERE p.job_id = @jobId
             """, new { jobId });
 
-        return pages.ToDictionary(p => new Uri(p.Url).PathAndQuery);
+        // Keyed by path for the fixture site's own pages, by full URL for any other host.
+        return pages.ToDictionary(p => new Uri(p.Url) is var uri && uri.Host == FixtureSiteHandler.Host
+            ? uri.PathAndQuery
+            : p.Url);
     }
 
     public async Task<(long Pages, long Links, long Outbox)> CountRowsAsync(Guid jobId)
@@ -135,6 +138,7 @@ public sealed class CrawlHarness
     public sealed class JobRow
     {
         public string Status { get; set; } = "";
+        public string RootHost { get; set; } = "";
         public string? FailureReason { get; set; }
         public int PagesDiscovered { get; set; }
         public int PagesCompleted { get; set; }

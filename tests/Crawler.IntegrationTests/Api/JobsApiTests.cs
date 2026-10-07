@@ -26,6 +26,7 @@ public sealed class JobsApiTests(PostgresFixture db) : IDisposable
         var job = await client.GetFromJsonAsync<JsonObject>($"/api/jobs/{jobId}");
         Assert.Equal("Pending", (string?)job!["status"]);
         Assert.Equal("https://site.test/", (string?)job["url"]); // normalized
+        Assert.Equal("site.test", (string?)job["startingDomain"]);
         Assert.Equal(1, (int?)job["maxDepth"]);
         Assert.Equal(200, (int?)job["maxPages"]);
         Assert.Equal(1, (int?)job["progress"]!["discovered"]);

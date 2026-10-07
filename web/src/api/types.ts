@@ -16,6 +16,8 @@ export interface JobProgress {
 export interface JobDetails {
   jobId: string;
   url: string;
+  /** Host whose links count as internal: the URL's host, or where the start page redirected to. */
+  startingDomain: string;
   status: JobStatus;
   maxDepth: number;
   maxPages: number;

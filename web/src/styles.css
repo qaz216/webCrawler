@@ -75,7 +75,8 @@ code, .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; f
 .nav a:hover { text-decoration: none; color: var(--text); }
 .nav a.active { color: var(--accent); background: var(--accent-soft); }
 .container { max-width: 1100px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
-.stack { display: grid; gap: 1rem; }
+/* minmax(0, 1fr): let cards shrink below their content (long URLs ellipsize instead of widening the page). */
+.stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; box-shadow: var(--shadow); }
 .card.narrow { max-width: 640px; margin: 0 auto; }
 .section-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
@@ -129,7 +130,8 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 .job-title { min-width: 0; }
 .job-title h1 { word-break: break-all; }
 .job-header-actions { display: flex; align-items: center; gap: 0.75rem; }
-.meta { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.75rem 1.5rem; margin: 1.25rem 0 0; }
+.meta { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr)); gap: 0.75rem 1.5rem; margin: 1.25rem 0 0; }
+.meta dd { overflow-wrap: anywhere; }
 .meta dt, .counts dt { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
 .meta dd, .counts dd { margin: 0; font-variant-numeric: tabular-nums; }
 .progress-block { margin-top: 1.25rem; }
@@ -182,6 +184,9 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; gap: 1rem; }
 
 @media (max-width: 720px) {
+  .container { padding: 1rem 0.75rem 2rem; }
+  .card { padding: 1rem; }
+  .tree-list .tree-list { margin-left: 0.5rem; padding-left: 0.4rem; }
   .tree-row { flex-wrap: wrap; }
   .tree-meta { width: 100%; padding-left: 1.9rem; gap: 0.5rem; }
   .link-count, .http-code { min-width: 0; }

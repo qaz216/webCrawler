@@ -18,7 +18,7 @@ public sealed class CrawlQueries(NpgsqlDataSource dataSource) : ICrawlQueries
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
 
         var row = await connection.QuerySingleOrDefaultAsync<JobRow>(new CommandDefinition("""
-            SELECT id, url, status, max_depth, max_pages, created_at, started_at, completed_at, failure_reason,
+            SELECT id, url, root_host, status, max_depth, max_pages, created_at, started_at, completed_at, failure_reason,
                    pages_discovered, pages_completed, pages_failed, pages_duplicate
               FROM crawl_jobs
              WHERE id = @jobId
@@ -27,7 +27,7 @@ public sealed class CrawlQueries(NpgsqlDataSource dataSource) : ICrawlQueries
 
         return row is null
             ? null
-            : new JobDetails(row.Id, row.Url, Enum.Parse<JobStatus>(row.Status), row.MaxDepth, row.MaxPages,
+            : new JobDetails(row.Id, row.Url, row.RootHost, Enum.Parse<JobStatus>(row.Status), row.MaxDepth, row.MaxPages,
                 row.CreatedAt, row.StartedAt, row.CompletedAt, row.FailureReason,
                 new JobProgress(row.PagesDiscovered, row.PagesCompleted, row.PagesFailed, row.PagesDuplicate));
     }
@@ -79,6 +79,7 @@ public sealed class CrawlQueries(NpgsqlDataSource dataSource) : ICrawlQueries
     {
         public Guid Id { get; set; }
         public string Url { get; set; } = "";
+        public string RootHost { get; set; } = "";
         public string Status { get; set; } = "";
         public int MaxDepth { get; set; }
         public int MaxPages { get; set; }

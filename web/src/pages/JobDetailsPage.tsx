@@ -81,6 +81,13 @@ function JobSummary({ job, stale }: { job: JobDetails; stale: boolean }) {
         <div><dt>Started</dt><dd>{formatDateTime(job.startedAt)}</dd></div>
         <div><dt>Completed</dt><dd>{formatDateTime(job.completedAt)}</dd></div>
         <div><dt>Duration</dt><dd>{formatDuration(job.startedAt, job.completedAt, now)}</dd></div>
+        <div>
+          <dt>Starting domain</dt>
+          <dd>
+            {job.startingDomain}
+            {redirectedFrom(job) && <span className="muted small"> (redirected from {redirectedFrom(job)})</span>}
+          </dd>
+        </div>
         <div><dt>Max depth</dt><dd>{job.maxDepth}</dd></div>
         <div><dt>Max pages</dt><dd>{job.maxPages}</dd></div>
       </dl>
@@ -114,6 +121,16 @@ function JobPages({ job }: { job: JobDetails }) {
       )}
     </section>
   );
+}
+
+/** The host the user entered, when the start page redirected elsewhere (google.com → www.google.com). */
+function redirectedFrom(job: JobDetails): string | null {
+  try {
+    const entered = new URL(job.url).host;
+    return entered.toLowerCase() === job.startingDomain.toLowerCase() ? null : entered;
+  } catch {
+    return null;
+  }
 }
 
 /** Ticks every second while `active`, so a running job's duration counts up. */

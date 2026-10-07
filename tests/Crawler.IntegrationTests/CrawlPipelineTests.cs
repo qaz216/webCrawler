@@ -96,6 +96,36 @@ public class CrawlPipelineTests(PostgresFixture db)
     }
 
     [Fact]
+    public async Task Start_page_redirect_to_another_host_moves_the_starting_domain()
+    {
+        // Like google.com → www.google.com: alias.test redirects to site.test.
+        var harness = new CrawlHarness(db.DataSource);
+        var job = await harness.StartJobAtAsync(new Uri($"https://{FixtureSiteHandler.RedirectingHost}/"));
+
+        await harness.RunToCompletionAsync(job.JobId);
+
+        var summary = await harness.GetJobAsync(job.JobId);
+        Assert.Equal("Completed", summary.Status);
+        Assert.Equal(FixtureSiteHandler.Host, summary.RootHost);
+
+        // The whole site was crawled, not skipped as "off-domain".
+        var pages = await harness.GetPagesAsync(job.JobId);
+        var root = pages["https://alias.test/"];
+        Assert.Equal("Completed", root.Status);
+        Assert.Equal(0.875m, root.DomainLinkRatio); // judged against site.test
+        Assert.Equal("Completed", pages["/team.html"].Status);
+        Assert.Equal(2, pages["/team.html"].Depth);
+
+        // site.test/ (the redirect target, linked as "#top") and /index.html have the root's content:
+        // fetched once each, recorded as duplicates, not crawled again.
+        Assert.Equal("Duplicate", pages["/"].Status);
+        Assert.Equal("Duplicate", pages["/index.html"].Status);
+        Assert.Equal(2, summary.PagesDuplicate);
+        Assert.Equal(1, summary.PagesFailed);
+        Assert.Equal(12, summary.PagesDiscovered);
+    }
+
+    [Fact]
     public async Task Duplicate_delivery_creates_no_duplicate_rows()
     {
         var harness = new CrawlHarness(db.DataSource);

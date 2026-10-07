@@ -143,6 +143,12 @@ Run the tests (Docker must be running for Testcontainers):
 dotnet test
 ```
 
+Alternatively, run them inside a Linux SDK container, as CI would. This is useful where local policy blocks freshly built test DLLs; Windows Smart App Control does this intermittently, and the error is "An Application Control policy has blocked this file":
+
+```bash
+docker run --rm -v "$PWD:/src:ro" -v /var/run/docker.sock:/var/run/docker.sock -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal mcr.microsoft.com/dotnet/sdk:8.0 sh /src/scripts/test-in-docker.sh
+```
+
 ## API
 
 All routes live under `/api`, and Swagger UI is at `/swagger`. Errors use RFC 7807 `ProblemDetails`: validation failures are `400` with per-field `errors`, an unknown job is `404`, and canceling a finished job is `409`. Every problem includes a `correlationId`. Responses echo `X-Correlation-Id`: send one to tie your request to the API's logs, or the API generates one. Enums are serialized as strings. Code: [`JobEndpoints.cs`](src/Crawler.Api/Endpoints/JobEndpoints.cs).
@@ -195,9 +201,10 @@ Tree node shape:
 
 **Scope**
 - Only links whose host equals the **starting domain** are followed. The starting domain is the host of the job URL, compared case-insensitively and exactly, so `www.example.com` ≠ `example.com` and subdomains count as external. External links are recorded and counted for the ratio but never fetched.
+- **If the start page redirects to another host, that host becomes the starting domain.** For example, `google.com` → `www.google.com`. The site has told us where it lives, and without this rule such a crawl would stop at its first page. The job stores the effective domain (`startingDomain` in the API, shown in the UI as "www.google.com (redirected from google.com)"). The rule applies to the start page only: any other page that redirects off the starting domain is `Skipped`.
 - Depth: the root is depth `0`. Children are enqueued only while `depth < maxDepth`.
 - **HTML only.** A response is parsed only if its `Content-Type` is `text/html` or `application/xhtml+xml`. Anything else is stored as `Skipped (non-HTML)` with no links.
-- Redirects are followed (max 5). The **final** URL is the base for resolving relative links. Redirects that leave the starting domain are not followed further.
+- Redirects are followed (max 5). The **final** URL is the base for resolving relative links. Apart from the start page (above), redirects that leave the starting domain are not followed further.
 - **Max pages per job: 200** by default. The cap is enforced atomically in the DB (see below), so concurrent workers cannot overshoot it.
 
 **Normalization** (`UrlNormalizer`, the key to de-duplication)
@@ -461,6 +468,7 @@ This is a time-boxed (~4h) assignment. The order follows the rubric weights and 
 - Migrations run when the API and worker start. This is not suitable for multi-instance production deploys.
 - Default credentials in `docker-compose.yml` are for local use only.
 - Content de-duplication needs an exact match. Pages that embed per-request values (timestamps, CSRF tokens, ads) get different fingerprints and are crawled as separate pages. An alias is still fetched once before it can be recognized, so it costs one request, but it is never expanded.
-- A redirect's target URL isn't recorded as a page of its own. If another page links directly to that target, it's fetched again.
+- A redirect's target URL isn't recorded as a page of its own. If another page links directly to that target, it's fetched again. Content de-duplication then records it as a `Duplicate`, so this costs a request but no repeated crawl.
+- `www.` and bare domains are only unified through the start-page redirect rule. A site that serves both hosts without redirecting is crawled on the host you entered.
 - Canceling stops new work, but pages that were queued stay `Pending` in the tree. In-flight pages finish.
 - A dead-lettered page is marked `Failed` by the worker. If the database is also down at that moment, the page stays `Processing` and its job never completes. A reaper for expired leases would fix this.

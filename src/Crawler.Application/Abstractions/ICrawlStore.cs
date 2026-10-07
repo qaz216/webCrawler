@@ -22,6 +22,7 @@ public interface ICrawlStore
     /// (respecting the job's page cap), their outbox tasks, job counters and job completion.
     /// A Completed page whose <see cref="PageOutcome.ContentHash"/> matches a page already crawled in
     /// the job is stored as <see cref="PageStatus.Duplicate"/> instead, and not expanded.
+    /// For the start page, <see cref="PageOutcome.NewRootHost"/> (its redirect target) replaces the job's starting domain.
     /// </summary>
     Task<PageCompletion> CompletePageAsync(PageOutcome outcome, CancellationToken cancellationToken);
 
@@ -76,7 +77,8 @@ public sealed record PageOutcome(
     double? DomainLinkRatio = null,
     IReadOnlyList<DiscoveredLink>? Links = null,
     IReadOnlyList<string>? ChildUrls = null,
-    string? ContentHash = null)
+    string? ContentHash = null,
+    string? NewRootHost = null)
 {
     public IReadOnlyList<DiscoveredLink> Links { get; init; } = Links ?? [];
 
