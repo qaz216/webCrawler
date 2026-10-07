@@ -21,28 +21,40 @@ interface PageTreeProps {
  * appear while the crawl runs are briefly highlighted.
  */
 export function PageTree({ root, initialDepth = 1, focus }: PageTreeProps) {
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(expandableIds(root, initialDepth)));
+  // Expansion = a default by depth (top level open, the rest closed) plus the user's explicit choices.
+  // Keeping only the overrides means pages that appear later (while the crawl runs, or when the
+  // tree first loads before the start page has children) still get the default.
+  const [overrides, setOverrides] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const total = useMemo(() => countNodes(root), [root]);
   const fresh = useFreshIds(root);
 
-  const toggle = useCallback((pageId: string) => {
-    setExpanded((current) => {
-      const next = new Set(current);
-      if (next.has(pageId)) next.delete(pageId);
-      else next.add(pageId);
+  const isExpanded = useCallback(
+    (node: PageTreeNode) => overrides.get(node.pageId) ?? node.depth < initialDepth,
+    [overrides, initialDepth],
+  );
+
+  const setMany = useCallback((ids: string[], open: boolean) => {
+    setOverrides((current) => {
+      const next = new Map(current);
+      for (const id of ids) next.set(id, open);
       return next;
     });
   }, []);
+
+  const toggle = useCallback(
+    (node: PageTreeNode) => setMany([node.pageId], !isExpanded(node)),
+    [isExpanded, setMany],
+  );
 
   const reveal = useCallback(
     (pageId: string) => {
       const path = ancestorIds(root, pageId);
       if (!path) return;
-      setExpanded((current) => new Set([...current, ...path]));
+      setMany(path, true);
       setHighlighted(pageId);
     },
-    [root],
+    [root, setMany],
   );
 
   useEffect(() => {
@@ -55,18 +67,18 @@ export function PageTree({ root, initialDepth = 1, focus }: PageTreeProps) {
         <span className="muted small">{total === 1 ? "1 page" : `${total} pages`}</span>
         <div className="tree-actions">
           <button type="button" className="button button-small button-secondary"
-            onClick={() => setExpanded(new Set(expandableIds(root)))}>
+            onClick={() => setMany(expandableIds(root), true)}>
             Expand all
           </button>
           <button type="button" className="button button-small button-secondary"
-            onClick={() => setExpanded(new Set())}>
+            onClick={() => setMany(expandableIds(root), false)}>
             Collapse all
           </button>
         </div>
       </div>
 
       <ul className="tree-list" role="tree" aria-label="Crawled pages">
-        <TreeItem node={root} rootUrl={root.url} expanded={expanded} highlighted={highlighted}
+        <TreeItem node={root} rootUrl={root.url} isExpanded={isExpanded} highlighted={highlighted}
           fresh={fresh} onToggle={toggle} onReveal={reveal} />
       </ul>
     </div>
@@ -94,16 +106,16 @@ function useFreshIds(root: PageTreeNode): ReadonlySet<string> {
 interface TreeItemProps {
   node: PageTreeNode;
   rootUrl: string;
-  expanded: Set<string>;
+  isExpanded: (node: PageTreeNode) => boolean;
   highlighted: string | null;
   fresh: ReadonlySet<string>;
-  onToggle: (pageId: string) => void;
+  onToggle: (node: PageTreeNode) => void;
   onReveal: (pageId: string) => void;
 }
 
-function TreeItem({ node, rootUrl, expanded, highlighted, fresh, onToggle, onReveal }: TreeItemProps) {
+function TreeItem({ node, rootUrl, isExpanded: isNodeExpanded, highlighted, fresh, onToggle, onReveal }: TreeItemProps) {
   const hasChildren = node.children.length > 0;
-  const isExpanded = expanded.has(node.pageId);
+  const isExpanded = isNodeExpanded(node);
   const isHighlighted = highlighted === node.pageId;
   const isFresh = fresh.has(node.pageId);
   const rowRef = useRef<HTMLDivElement>(null);
@@ -117,7 +129,7 @@ function TreeItem({ node, rootUrl, expanded, highlighted, fresh, onToggle, onRev
       <div ref={rowRef} id={`page-${node.pageId}`}
         className={`tree-row status-${node.status.toLowerCase()} ${isHighlighted ? "tree-row-highlight" : ""} ${isFresh ? "tree-row-new" : ""}`}>
         {hasChildren ? (
-          <button type="button" className="tree-toggle" onClick={() => onToggle(node.pageId)}
+          <button type="button" className="tree-toggle" onClick={() => onToggle(node)}
             aria-label={`${isExpanded ? "Collapse" : "Expand"} ${node.url}`}>
             <ChevronRight size={15} className={isExpanded ? "chevron chevron-open" : "chevron"} aria-hidden="true" />
           </button>
@@ -145,7 +157,7 @@ function TreeItem({ node, rootUrl, expanded, highlighted, fresh, onToggle, onRev
       {hasChildren && isExpanded && (
         <ul role="group" className="tree-list">
           {node.children.map((child) => (
-            <TreeItem key={child.pageId} node={child} rootUrl={rootUrl} expanded={expanded}
+            <TreeItem key={child.pageId} node={child} rootUrl={rootUrl} isExpanded={isNodeExpanded}
               highlighted={highlighted} fresh={fresh} onToggle={onToggle} onReveal={onReveal} />
           ))}
         </ul>

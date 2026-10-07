@@ -31,6 +31,26 @@ describe("PageTree", () => {
     expect(screen.getByRole("link", { name: "/team.html" })).toBeInTheDocument();
   });
 
+  it("expands the top level by default even when its children arrive later", () => {
+    // First render: the crawl has only the start page so far.
+    const { rerender } = render(<PageTree root={{ ...sampleTree, children: [] }} />);
+    expect(screen.queryByRole("link", { name: "/about.html" })).not.toBeInTheDocument();
+
+    // Next poll: children were discovered — the top level opens, deeper levels stay closed.
+    rerender(<PageTree root={sampleTree} />);
+    expect(screen.getByRole("link", { name: "/about.html" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "/team.html" })).not.toBeInTheDocument();
+  });
+
+  it("remembers that the user collapsed the top level", () => {
+    const { rerender } = render(<PageTree root={sampleTree} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse https://site.test/" }));
+    rerender(<PageTree root={{ ...sampleTree }} />); // a later poll
+
+    expect(screen.queryByRole("link", { name: "/about.html" })).not.toBeInTheDocument();
+  });
+
   it("labels duplicates and links them to their original", () => {
     render(<PageTree root={sampleTree} />);
     fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
