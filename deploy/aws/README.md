@@ -1,10 +1,10 @@
 # Deploying the demo to AWS (single EC2 instance)
 
 One small EC2 instance runs the whole stack with Docker Compose. Caddy in front provides automatic
-HTTPS and a login prompt; nothing else is reachable from the internet.
+HTTPS (and, optionally, a login prompt); nothing else is reachable from the internet.
 
 ```
-Internet ──443/80──▶ Caddy (HTTPS + login) ──▶ web (nginx: UI, /api proxy) ──▶ api
+Internet ──443/80──▶ Caddy (HTTPS, optional login) ──▶ web (nginx: UI, /api proxy) ──▶ api
                                                                    worker ◀──▶ RabbitMQ, PostgreSQL
                      (only Caddy publishes ports; everything else is on Docker's internal network)
 ```
@@ -14,7 +14,7 @@ Internet ──443/80──▶ Caddy (HTTPS + login) ──▶ web (nginx: UI, /
 | Instance | `t3.small` (2 vCPU, 2 GB RAM + 2 GB swap), Ubuntu 24.04, 20 GB disk |
 | Cost | ≈ $0.025/hour running (≈ $20/month 24/7); stopped: only the disk, ≈ $1.60/month |
 | Address | `https://<public-ip-with-dashes>.sslip.io` — free hostname, real Let's Encrypt certificate |
-| Login | The username/password you set in `user-data.sh` |
+| Login | None by default: the site opens directly. Set `REQUIRE_LOGIN="yes"` in `user-data.sh` to require one |
 
 ## 1. Launch the instance (AWS console, ~5 minutes)
 
@@ -35,8 +35,8 @@ Internet ──443/80──▶ Caddy (HTTPS + login) ──▶ web (nginx: UI, /
    - **Metadata version:** *V2 only (token required)*
    - **Metadata response hop limit:** **1** — containers then can't reach the instance metadata at all
      (the crawler also refuses private addresses on its own; this is a second layer).
-   - **User data:** paste the whole of [`user-data.sh`](user-data.sh) — **first change `DEMO_PASSWORD`**
-     (and `DEMO_USER` if you like).
+   - **User data:** paste the whole of [`user-data.sh`](user-data.sh). It works as-is (no login).
+     To require a login, first set `REQUIRE_LOGIN="yes"` and change `DEMO_PASSWORD`.
 9. **Launch instance.**
 
 ## 2. Wait for it (~10 minutes) and open it
@@ -77,24 +77,24 @@ cat /opt/webcrawler/SITE_URL
 - **Your own domain:** point a DNS A record at the instance, then add `SITE_ADDRESS=crawler.example.com`
   to `/opt/webcrawler/.env` and restart (`sudo systemctl restart webcrawler`).
 
-## Public access (no login)
+## Login on or off
 
-By default every page asks for the demo login. To open the site to anyone with the address:
+By default the site has **no login**: `user-data.sh` writes `CADDYFILE=Caddyfile.public` to `.env`.
+Anyone who finds the address can start crawls (still limited to 200 pages each, and private addresses
+are still refused) and can use **Clear all**. For a login-free site that only you and your reviewers can
+reach, limit the security group's HTTP/HTTPS rules to those IP addresses.
+
+**Turn the login on** for a running server (replace `NEW-PASSWORD`):
 
 ```bash
-cd /opt/webcrawler && sudo git pull && echo 'CADDYFILE=Caddyfile.public' | sudo tee -a .env && sudo systemctl restart webcrawler
+cd /opt/webcrawler && HASH=$(sudo docker run --rm caddy:2-alpine caddy hash-password --plaintext 'NEW-PASSWORD') && sudo sed -i '/^CADDYFILE=/d;/^BASIC_AUTH_/d' .env && printf 'BASIC_AUTH_USER=demo\nBASIC_AUTH_HASH=%s\n' "${HASH//\$/\$\$}" | sudo tee -a .env >/dev/null && sudo systemctl restart webcrawler
 ```
 
-To require the login again, remove that line and restart:
+**Turn it off** again:
 
 ```bash
-cd /opt/webcrawler && sudo sed -i '/^CADDYFILE=/d' .env && sudo systemctl restart webcrawler
+cd /opt/webcrawler && sudo sed -i '/^CADDYFILE=/d' .env && echo 'CADDYFILE=Caddyfile.public' | sudo tee -a .env && sudo systemctl restart webcrawler
 ```
-
-Without the login, anyone who finds the address can start crawls (still limited to 200 pages each, and
-private addresses are still refused) and can use **Clear all**. For a login-free site that only you and
-your reviewers can reach, keep `Caddyfile.public` and instead limit the security group's HTTP/HTTPS
-rules to those IP addresses.
 
 ## Troubleshooting
 
@@ -121,7 +121,8 @@ an Elastic IP, release it too (EC2 → Elastic IPs), and delete the security gro
 
 ## What's protected
 
-- **Login on everything** (Caddy basic auth over HTTPS), so strangers can't use the server to crawl.
+- **Optional login on everything** (Caddy basic auth over HTTPS, `REQUIRE_LOGIN="yes"`), so strangers
+  can't use the server to crawl. Off by default for easy demos.
 - **No internal ports exposed**: PostgreSQL, RabbitMQ, the API and the worker publish no ports
   (`docker-compose.prod.yml`); Swagger and health endpoints aren't reachable from outside.
 - **Random secrets**: database and broker passwords are generated on first boot into `/opt/webcrawler/.env`

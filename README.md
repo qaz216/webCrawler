@@ -151,7 +151,7 @@ docker run --rm -v "$PWD:/src:ro" -v /var/run/docker.sock:/var/run/docker.sock -
 
 ## Deploying (AWS demo)
 
-A single small EC2 instance (t3.small, about $20/month while running) runs the same Compose stack. It adds [`docker-compose.prod.yml`](docker-compose.prod.yml), in which Caddy provides automatic HTTPS and a login and no internal ports are exposed. Paste [`deploy/aws/user-data.sh`](deploy/aws/user-data.sh) when launching the instance and it sets everything up. The step-by-step console guide is in [`deploy/aws/README.md`](deploy/aws/README.md).
+A single small EC2 instance (t3.small, about $20/month while running) runs the same Compose stack. It adds [`docker-compose.prod.yml`](docker-compose.prod.yml), in which Caddy provides automatic HTTPS (plus an optional login, off by default) and no internal ports are exposed. Paste [`deploy/aws/user-data.sh`](deploy/aws/user-data.sh) when launching the instance and it sets everything up. The step-by-step console guide is in [`deploy/aws/README.md`](deploy/aws/README.md).
 
 Because anyone could submit a URL, the worker has **SSRF protection** ([`PrivateNetworkGuard.cs`](src/Crawler.Infrastructure/Http/PrivateNetworkGuard.cs)). It resolves each host itself and refuses private, loopback and link-local addresses, including the cloud metadata service `169.254.169.254`, on every connection and redirect hop. Such pages fail at once with a clear reason and are never retried. To crawl a site on your own network, set `HttpFetch__BlockPrivateNetworks=false`.
 

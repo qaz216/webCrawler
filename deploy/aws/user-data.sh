@@ -3,10 +3,13 @@
 # Paste this whole file into "Advanced details → User data" when launching the instance.
 # Setup log on the instance: /var/log/webcrawler-setup.log   (see deploy/aws/README.md)
 
-# ─────────── Change these before launching ───────────
+# ─────────── Optional settings ───────────
+# The site is open to anyone with the address (no login). To require a login instead,
+# set REQUIRE_LOGIN="yes" and choose a password.
+REQUIRE_LOGIN="no"
 DEMO_USER="demo"
 DEMO_PASSWORD="change-me-please"
-# ──────────────────────────────────────────────────────
+# ─────────────────────────────────────────
 
 REPO="https://github.com/qaz216/webCrawler.git"
 APP_DIR="/opt/webcrawler"
@@ -39,16 +42,23 @@ fi
 git clone --depth 1 "$REPO" "$APP_DIR"
 cd "$APP_DIR"
 
-# Secrets: random database/broker passwords and the bcrypt hash of the demo login.
-# "$" is doubled because Docker Compose interpolates variables inside .env values.
-HASH="$(docker run --rm caddy:2-alpine caddy hash-password --plaintext "$DEMO_PASSWORD")"
+# Secrets: random database/broker passwords.
 cat > .env <<EOF
 POSTGRES_PASSWORD=$(openssl rand -hex 24)
 RABBITMQ_USER=crawler
 RABBITMQ_PASSWORD=$(openssl rand -hex 24)
-BASIC_AUTH_USER=$DEMO_USER
-BASIC_AUTH_HASH=${HASH//\$/\$\$}
 EOF
+
+if [ "$REQUIRE_LOGIN" = "yes" ]; then
+  # Login on every page: store only the bcrypt hash of the password.
+  # "$" is doubled because Docker Compose interpolates variables inside .env values.
+  HASH="$(docker run --rm caddy:2-alpine caddy hash-password --plaintext "$DEMO_PASSWORD")"
+  echo "BASIC_AUTH_USER=$DEMO_USER" >> .env
+  echo "BASIC_AUTH_HASH=${HASH//\$/\$\$}" >> .env
+else
+  # No login: Caddy serves the app directly (SSRF protection and page limits still apply).
+  echo "CADDYFILE=Caddyfile.public" >> .env
+fi
 chmod 600 .env
 
 # Start on every boot (the public IP — and so the sslip.io address — can change after stop/start).
