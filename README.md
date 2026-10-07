@@ -83,7 +83,7 @@ The dependency direction is `Api/Worker → Infrastructure → Application → D
 ### Key architectural choices
 
 - **One message per page, not one per job.** The worker consumes `CrawlPageTask` messages. Each processed page publishes tasks for its newly discovered same-domain children at `depth + 1`. Benefits:
-  - Pages are crawled in parallel across worker instances (scale with `docker compose up --scale worker=3`).
+  - Pages are crawled in parallel: 4 at a time per worker process, and across worker instances. To scale with `docker compose up --scale worker=3`, first remove the worker's fixed host port mapping.
   - A slow or failing page retries alone instead of restarting the whole job.
   - Idempotency, retries and the DLQ apply at a meaningful granularity.
 - **The worker owns writes for crawl results. The API owns job creation and all reads.** Both share one database through the Infrastructure layer. For a two-service system, a shared schema is pragmatic. A stricter split (the worker emits `PageCrawled` events and the API projects them) is listed under next steps.
@@ -110,7 +110,7 @@ docker compose up --build
 | RabbitMQ management  | http://localhost:15672 (guest/guest)  |
 | PostgreSQL           | localhost:5432 (crawler/crawler)      |
 
-Database migrations (the embedded `.sql` scripts) are applied automatically on API startup, under a Postgres advisory lock so concurrent starts are safe. That's fine for local and demo use, but not for production. Docker Compose healthchecks gate start order: the API and worker wait for Postgres and RabbitMQ to be healthy.
+Database migrations (the embedded `.sql` scripts) are applied automatically when the API or the worker starts, under a Postgres advisory lock so concurrent starts are safe. Each service waits and retries until the database is reachable. That's fine for local and demo use, but not for production. Docker Compose healthchecks gate start order: the API and worker wait for Postgres and RabbitMQ to be healthy.
 
 To develop without containers for the apps:
 
@@ -210,22 +210,31 @@ ratio = (# outgoing links whose host == starting domain) / (total # outgoing lin
 | Name                     | Type           | Purpose                                                        |
 |--------------------------|----------------|----------------------------------------------------------------|
 | `crawl`                  | direct exchange| Main exchange                                                  |
-| `crawl.pages`            | quorum queue   | `CrawlPageTask` work queue (routing key `page`)                |
-| `crawl.pages.retry.5s`   | queue, TTL 5s  | Delay queue that dead-letters back to `crawl` / `page`         |
-| `crawl.pages.retry.30s`  | queue, TTL 30s | Second delay tier                                              |
-| `crawl.pages.retry.2m`   | queue, TTL 2m  | Third delay tier                                               |
-| `crawl.dlx` → `crawl.pages.dlq` | direct exchange + queue | Poison and exhausted messages                     |
+| `crawl.pages`            | quorum queue   | `CrawlPageTask` work queue (routing key `page`). `x-delivery-limit = 10` dead-letters messages that keep crashing consumers before they ack. |
+| `crawl.pages.retry.5000ms`   | queue, TTL 5s  | Delay queue with no consumers. When the TTL expires, messages dead-letter back to `crawl` / `page`. |
+| `crawl.pages.retry.30000ms`  | queue, TTL 30s | Second delay tier                                              |
+| `crawl.pages.retry.120000ms` | queue, TTL 2m  | Third delay tier                                               |
+| `crawl.dlx` → `crawl.pages.dlq` | direct exchange + quorum queue | Poison and exhausted messages              |
 
-Consumers use manual acks, `prefetch = 10`, and publisher confirms on publish.
+The delay is part of each retry queue's name. Changing the tiers (`RabbitMq:RetryDelays`) therefore creates new queues instead of clashing with the arguments of existing ones. The API and every worker declare the topology on startup; declarations are idempotent. Code: [`RabbitMqTopology.cs`](src/Crawler.Infrastructure/Messaging/RabbitMqTopology.cs).
+
+Consumers use manual acks, `prefetch = 10` and 4 concurrent handlers per worker process. Publishing uses publisher confirms with `mandatory`, so a publish counts as done only once the broker has accepted it. Every delivery ends in exactly one way:
+- **ack** (processed, or a duplicate);
+- **re-publish to a retry tier, then ack**;
+- **publish to the DLQ, then ack**.
+
+The follow-up publish is always confirmed before the ack. A crash between the two causes a redelivery, never a lost message. If the follow-up publish itself fails (broker trouble), the delivery is nacked and requeued. Code: [`PageTaskConsumer.cs`](src/Crawler.Infrastructure/Messaging/PageTaskConsumer.cs).
+
+The **outbox dispatcher** polls `outbox_messages` every 250 ms. It takes rows with `FOR UPDATE SKIP LOCKED`, so the API and several workers can all dispatch without double-sending, publishes them with confirms, then marks them sent in the same transaction.
 
 ### Message schema
 
-`CrawlPageTask` (v1), JSON body. The headers are `message-id`, `correlation-id` (= jobId), `x-attempt` and `x-schema-version`.
+`CrawlPageTask` (v1), JSON body. AMQP properties: `message-id` (= pageId), `correlation-id` (= jobId), `type` (`crawl.page-task.v1`), `content-type`. Headers: `x-attempt` (absent on the first delivery). Dead-lettered copies also carry `x-error`, `x-error-type` and `x-dead-lettered-at`.
 
 ```json
 {
   "schemaVersion": 1,
-  "messageId": "6f1c…",              // deterministic: hash(jobId + normalizedUrl)
+  "messageId": "6f1c…",              // = pageId: unique per (job, normalized URL)
   "jobId": "3b0e…",
   "pageId": "a91d…",                 // row already claimed in `pages`
   "url": "https://example.com/about",
@@ -350,6 +359,8 @@ React + TypeScript + Vite, built to static files and served by nginx in Compose.
 | Unit | `LinkExtractor`: anchors, malformed hrefs, non-HTML content | Fixture HTML strings |
 | Integration | Crawl a **local fixture site**: a static HTML folder served by a fake `HttpMessageHandler`, including a cycle, a duplicate link, an external link, a non-HTML file and a 500. The expected tree, ratios and statuses are asserted against real Postgres. | Testcontainers Postgres plus an in-memory publisher that feeds tasks straight back to the handler |
 | Integration | **Idempotency:** deliver the same `CrawlPageTask` twice (and concurrently) and assert no duplicate `pages`/`page_links` rows and correct counters | Same harness |
+| Unit | `FailurePolicy`: transient → each delay tier → DLQ; poison → DLQ at once; unexpected → one retry | xUnit |
+| End-to-end | The **real worker host** (outbox dispatcher, RabbitMQ consumer, handler) crawls the fixture site through a real broker. A page that's always down goes through all retry tiers into the DLQ and fails the job. A malformed message goes straight to the DLQ. | Testcontainers RabbitMQ + PostgreSQL |
 | CI | GitHub Actions: `dotnet build`, `dotnet test`, `npm ci && npm run build` | `.github/workflows/ci.yml` |
 
 ## Priorities, cuts and next steps

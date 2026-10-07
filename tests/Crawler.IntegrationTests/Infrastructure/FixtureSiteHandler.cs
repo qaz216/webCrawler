@@ -6,8 +6,8 @@ namespace Crawler.IntegrationTests.Infrastructure;
 
 /// <summary>
 /// Serves Fixtures/site as https://site.test/ without a network. "/dir/" maps to dir/index.html,
-/// .pdf files are served as application/pdf, missing files are 404, and /flaky.html returns
-/// 503 on its first request. Every request is counted so tests can assert "fetched exactly once".
+/// .pdf files are served as application/pdf, missing files are 404, /flaky.html returns
+/// 503 on its first request and /down.html always returns 503. Every request is counted so tests can assert "fetched exactly once".
 /// </summary>
 public sealed class FixtureSiteHandler : HttpMessageHandler
 {
@@ -38,6 +38,9 @@ public sealed class FixtureSiteHandler : HttpMessageHandler
             return new HttpResponseMessage(HttpStatusCode.NotFound);
 
         if (uri.AbsolutePath == "/flaky.html" && requestNumber == 1)
+            return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+
+        if (uri.AbsolutePath == "/down.html")
             return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
 
         var relative = uri.AbsolutePath.TrimStart('/');

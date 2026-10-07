@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using Crawler.Application;
 using Crawler.Application.Abstractions;
+using Polly;
 
 namespace Crawler.Infrastructure.Http;
 
@@ -57,6 +58,11 @@ public sealed class HttpPageFetcher(HttpClient httpClient) : IPageFetcher
         catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
             throw new TransientCrawlException($"Request to {request.RequestUri} timed out", ex);
+        }
+        catch (ExecutionRejectedException ex)
+        {
+            // Resilience pipeline gave up (attempt/total timeout).
+            throw new TransientCrawlException($"Request to {request.RequestUri} was rejected: {ex.Message}", ex);
         }
     }
 

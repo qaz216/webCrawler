@@ -35,9 +35,24 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # The api, worker and web services are added here as their projects land
-  # (see README → Solution layout). Each will depend_on postgres and rabbitmq
-  # with condition: service_healthy.
+  worker:
+    build:
+      context: .
+      dockerfile: src/Crawler.Worker/Dockerfile
+    environment:
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=crawler;Username=crawler;Password=crawler
+      RabbitMq__Uri: amqp://guest:guest@rabbitmq:5672/
+    ports:
+      - "8081:8080"    # /health/live, /health/ready
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # The api and web services are added here as their projects land
+  # (see README → Solution layout).
 
 volumes:
   postgres-data:

@@ -14,6 +14,26 @@ public sealed class DatabaseMigrator(NpgsqlDataSource dataSource, ILogger<Databa
     private const long AdvisoryLockKey = 0x5745_4243_5241_574C; // "WEBCRAWL"
     private const string ResourcePrefix = "Crawler.Infrastructure.Persistence.Migrations.";
 
+    /// <summary>Startup variant: waits for the database to accept connections (e.g. container still starting).</summary>
+    public async Task MigrateWithRetryAsync(CancellationToken cancellationToken = default)
+    {
+        const int maxAttempts = 15;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await MigrateAsync(cancellationToken);
+                return;
+            }
+            catch (NpgsqlException ex) when (ex.IsTransient && attempt < maxAttempts)
+            {
+                var delay = TimeSpan.FromSeconds(Math.Min(attempt * 2, 10));
+                logger.LogWarning(ex, "Database not ready (attempt {Attempt}), retrying in {Delay}", attempt, delay);
+                await Task.Delay(delay, cancellationToken);
+            }
+        }
+    }
+
     public async Task MigrateAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
