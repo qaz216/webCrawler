@@ -22,6 +22,7 @@ A job-based web crawler made of event-driven microservices. A user submits a URL
 10. [Frontend](#frontend)
 11. [Observability](#observability)
 12. [Testing](#testing)
+13. [Scope decisions](#scope-decisions) (what was cut, what's next)
 
 ---
 
@@ -439,3 +440,47 @@ The dev server runs at http://localhost:5173, with `/api` proxied to `localhost:
 | End-to-end | The **real worker host** (outbox dispatcher, RabbitMQ consumer, handler) crawls the fixture site through a real broker. A page that's always down goes through all retry tiers into the DLQ and fails the job. A malformed message goes straight to the DLQ. | Testcontainers RabbitMQ + PostgreSQL |
 | Frontend | Formatting and tree helpers, the tree component (expand/collapse, duplicate → original), and the Start Crawl form against a mocked API | Vitest + Testing Library (`cd web && npm test`) |
 | CI | On every push to `main` and every pull request, three parallel jobs. **Backend:** restore, build (warnings fail it), all .NET tests, including the Testcontainers integration tests. **Frontend:** `npm ci`, type check, Vitest, production build. **Docker:** builds the api/worker/web images and validates the production Compose overlay, both Caddyfiles and the deploy scripts. Test results are uploaded as an artifact. | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |
+
+## Scope decisions
+
+The assignment is time-boxed, so effort went first to the areas the evaluation weighs most: correctness and edge cases, then architecture and event-driven robustness. The items below were deliberately left out or kept minimal.
+
+### What was cut (and why)
+
+| Area | Decision | Rationale |
+|---|---|---|
+| **JavaScript rendering** | Pages are parsed as delivered; scripts are not executed. | A headless browser adds a large runtime (≈ 400 MB per worker image), seconds per page and heavy memory use. Sites that build their links client-side (e.g. torahanytime.com) therefore show no links. |
+| **Crawl politeness** | No `robots.txt` handling, per-host rate limiting or crawl delays. | Outside the evaluated scope. Rate-limited sites (HTTP 429) are still handled correctly by the retry policy, just more slowly. |
+| **Real-time updates** | The UI polls (status every 1.5 s, tree every 2 s). | Polling meets the requirement with fewer moving parts. SignalR/SSE was listed as a stretch goal. |
+| **Authentication and multi-tenancy** | None in the application. The AWS demo has an optional HTTP basic-auth gate. | Not requested. Keeping the demo login-free makes review easier. |
+| **Service-owned data** | The API and worker share one database schema. | Pragmatic for two services. A stricter split, with the worker publishing events and the API maintaining its own read model, adds infrastructure without changing behaviour at this scale. |
+| **Full Public Suffix List** | Root domains use a built-in list of common two-part country suffixes (`co.uk`, `com.au`, …). | Covers real-world cases seen in testing. Rare suffixes and shared-hosting domains (e.g. `github.io`) are not distinguished. |
+| **Query-string canonicalization** | Query strings are kept as-is; tracking parameters are not stripped. | Rules that guess are risky for some servers. Content de-duplication catches the resulting aliases instead. |
+| **DLQ tooling** | No replay endpoint or admin screen. | Dead-lettered messages are logged and can be inspected or moved in the RabbitMQ management UI. |
+| **Metrics and tracing** | Structured logs with correlation IDs and health endpoints only. | Meets the observability requirement. OpenTelemetry and metrics dashboards are the natural next layer. |
+| **Continuous deployment** | CI builds and tests on every push; deployment to AWS is a manual one-line update. | The assignment asks for CI only. A single-instance demo doesn't justify a deployment pipeline yet. |
+
+### What I would do next with more time
+
+1. **Optional JavaScript rendering.** A Playwright-based `IPageFetcher`, enabled per job or used automatically when a page returns HTML with no links. It slots in behind the existing interface without changing the pipeline.
+2. **Crawl politeness.**
+   - Honour `robots.txt` and `Crawl-delay`.
+   - Limit concurrent requests per host.
+   - Back off adaptively when a site returns 429.
+3. **Live progress via SignalR or Server-Sent Events,** replacing polling. The UI's data hooks already isolate this.
+4. **Observability.** OpenTelemetry traces across API → broker → worker. Metrics such as pages per second, retries and DLQ depth, with alerting.
+5. **Operational tooling.**
+   - A DLQ inspect-and-replay endpoint.
+   - A background "reaper" for pages left in `Processing` after a crash.
+   - Flagging pages truncated at the 10 MB body limit.
+6. **Service-owned data.** The worker publishes `PageCrawled` / `JobCompleted` events, and the API builds its own read model.
+7. **Production-grade deployment.**
+   - Continuous deployment from GitHub Actions to AWS (OIDC + Systems Manager).
+   - Then managed services (ECS Fargate, RDS, Amazon MQ) defined as infrastructure-as-code.
+8. **Scale and data lifecycle.**
+   - Keyset pagination for history.
+   - Partitioning or archiving `page_links` for large jobs.
+   - Load testing to tune prefetch and worker concurrency.
+9. **Quality gates.**
+   - Contract tests for the message schema, with a versioning policy.
+   - Bundle the full Public Suffix List.
