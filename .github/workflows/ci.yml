@@ -1,0 +1,121 @@
+name: CI
+
+# Build and test on every push to main and every pull request.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch supersedes an in-progress run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (.NET build + tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore WebCrawler.sln
+
+      # Directory.Build.props sets TreatWarningsAsErrors, so warnings fail the build too.
+      - name: Build
+        run: dotnet build WebCrawler.sln --no-restore --configuration Release
+
+      # Integration tests start PostgreSQL and RabbitMQ with Testcontainers (Docker is preinstalled on the runner).
+      - name: Test
+        run: >
+          dotnet test WebCrawler.sln --no-build --configuration Release
+          --logger "trx;LogFilePrefix=results" --logger "console;verbosity=normal"
+          --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-test-results
+          path: TestResults/*.trx
+          if-no-files-found: warn
+
+  frontend:
+    name: Frontend (type check, tests, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  docker:
+    name: Docker images + deploy config
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      # The same images the AWS server builds: catches Dockerfile breakage before it reaches a deploy.
+      - name: Build images (api, worker, web)
+        run: docker compose -f docker-compose.yml build --pull
+
+      - name: Validate production compose overlay
+        env:
+          POSTGRES_PASSWORD: ci
+          RABBITMQ_USER: ci
+          RABBITMQ_PASSWORD: ci
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
+          CADDYFILE=Caddyfile.public docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
+
+      # The hash is bcrypt for the throwaway password "ci" — only used to validate the config.
+      - name: Validate Caddy configs
+        run: |
+          for file in Caddyfile Caddyfile.public; do
+            docker run --rm -e SITE_ADDRESS=:80 -e BASIC_AUTH_USER=ci \
+              -e 'BASIC_AUTH_HASH=$2a$14$fcY83Apge/rp3HqAHt6dGuCMi4.CBCWHR7fF/1cs7Cc2DhqHRtxQC' \
+              -v "$PWD/deploy/$file:/etc/caddy/Caddyfile:ro" caddy:2-alpine \
+              caddy validate --config /etc/caddy/Caddyfile
+          done
+
+      - name: Check deploy scripts
+        run: |
+          bash -n deploy/aws/user-data.sh
+          bash -n deploy/aws/start.sh
+          bash -n scripts/test-in-docker.sh

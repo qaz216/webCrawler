@@ -1,5 +1,7 @@
 # webCrawler
 
+[![CI](https://github.com/qaz216/webCrawler/actions/workflows/ci.yml/badge.svg)](https://github.com/qaz216/webCrawler/actions/workflows/ci.yml)
+
 A job-based web crawler made of event-driven microservices. A user submits a URL. A worker crawls the site asynchronously through a message broker and stores the results in SQL. A React UI shows progress, the page tree with each page's **Domain Link Ratio**, and the history of past jobs.
 
 > **Status:** design and plan. This README describes the approach being implemented. Sections marked _(planned)_ are not built yet. As the work lands, the README will be updated to match the code.
@@ -441,7 +443,7 @@ The dev server runs at http://localhost:5173, with `/api` proxied to `localhost:
 | Unit | `FailurePolicy`: transient → each delay tier → DLQ; poison → DLQ at once; unexpected → one retry | xUnit |
 | End-to-end | The **real worker host** (outbox dispatcher, RabbitMQ consumer, handler) crawls the fixture site through a real broker. A page that's always down goes through all retry tiers into the DLQ and fails the job. A malformed message goes straight to the DLQ. | Testcontainers RabbitMQ + PostgreSQL |
 | Frontend | Formatting and tree helpers, the tree component (expand/collapse, duplicate → original), and the Start Crawl form against a mocked API | Vitest + Testing Library (`cd web && npm test`) |
-| CI | GitHub Actions: `dotnet build`, `dotnet test`, `npm ci && npm run build` | `.github/workflows/ci.yml` _(planned)_ |
+| CI | On every push to `main` and every pull request, three parallel jobs. **Backend:** restore, build (warnings fail it), all .NET tests, including the Testcontainers integration tests. **Frontend:** `npm ci`, type check, Vitest, production build. **Docker:** builds the api/worker/web images and validates the production Compose overlay, both Caddyfiles and the deploy scripts. Test results are uploaded as an artifact. | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |
 
 ## Priorities, cuts and next steps
 
