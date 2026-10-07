@@ -26,12 +26,14 @@ public sealed record JobDetails(
     string? FailureReason,
     JobProgress Progress);
 
-public sealed record JobProgress(int Discovered, int Completed, int Failed)
+/// <param name="Completed">Crawled successfully, including Skipped (non-HTML, off-domain redirect).</param>
+/// <param name="Duplicates">Fetched, but identical in content to a page already crawled; not expanded.</param>
+public sealed record JobProgress(int Discovered, int Completed, int Failed, int Duplicates)
 {
-    public int Pending => Math.Max(0, Discovered - Completed - Failed);
+    public int Pending => Math.Max(0, Discovered - Completed - Failed - Duplicates);
 
     /// <summary>Share of discovered pages that are finished. The total grows while crawling, so this is a lower bound.</summary>
-    public double Percent => Discovered == 0 ? 0 : Math.Round(100.0 * (Completed + Failed) / Discovered, 1);
+    public double Percent => Discovered == 0 ? 0 : Math.Round(100.0 * (Discovered - Pending) / Discovered, 1);
 }
 
 public sealed record JobListItem(
@@ -57,4 +59,6 @@ public sealed record PageRecord(
     int? HttpStatus,
     string? Error,
     double? DomainLinkRatio,
-    int? OutgoingLinkCount);
+    int? OutgoingLinkCount,
+    Guid? DuplicateOfPageId = null,
+    string? DuplicateOfUrl = null);

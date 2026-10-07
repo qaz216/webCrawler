@@ -12,6 +12,8 @@ public sealed record PageTreeNode(
     string? Error,
     double? DomainLinkRatio,
     int? OutgoingLinkCount,
+    Guid? DuplicateOfPageId,
+    string? DuplicateOfUrl,
     IReadOnlyList<PageTreeNode> Children);
 
 /// <summary>
@@ -45,6 +47,6 @@ public static class PageTreeBuilder
             .ToList();
 
         return new PageTreeNode(page.PageId, page.Url, page.Depth, page.Status, page.HttpStatus, page.Error,
-            page.DomainLinkRatio, page.OutgoingLinkCount, children);
+            page.DomainLinkRatio, page.OutgoingLinkCount, page.DuplicateOfPageId, page.DuplicateOfUrl, children);
     }
 }

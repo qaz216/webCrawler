@@ -204,7 +204,17 @@ Tree node shape:
 3. Drop the fragment (`#section`). A link that is only `#anchor` therefore normalizes to the page itself.
 4. Lowercase the scheme and host. Remove default ports (`:80`, `:443`).
 5. An empty path becomes `/`. The path's case and trailing slash are otherwise preserved, because servers may treat them differently.
-6. The query string is kept as-is. It is not re-ordered and tracking parameters are not stripped. This is a documented simplification.
+6. The query string is kept as-is. It is not re-ordered and tracking parameters are not stripped. Aliases this creates are caught by content de-duplication instead (below).
+
+**Content de-duplication** (`ContentFingerprint`)
+
+URL normalization can't know that `/` and `/index.html`, `?utm_source=x` and no query, or `/page` and `/page/` serve the same page. Rules that guessed (such as "strip `index.html`") would be wrong for some servers. So after fetching, the worker fingerprints the HTML with SHA-256 (line endings and surrounding whitespace ignored).
+- The **first** page of a job with a given fingerprint is the original.
+- A later page with the same fingerprint is stored with status **`Duplicate`** and `duplicate_of_page_id` pointing at the original. Its links are not recorded or followed, and it has no ratio of its own, because the original's applies.
+- Duplicates **stay in the tree** as a node showing "duplicate of …", so you can see where that link led. They're counted separately (`progress.duplicates`).
+- It's race-safe: completions are serialized per job by the job row lock, and a partial unique index on `(job_id, content_hash) WHERE status = 'Completed'` guarantees a single original. A test processes two aliases concurrently and asserts exactly one original.
+
+On books.toscrape.com, `/index.html` is recorded as a duplicate of `/` instead of crawling the home page twice.
 
 **Domain Link Ratio**
 
@@ -281,9 +291,10 @@ The system assumes at-least-once delivery. Every write is safe to repeat:
 | The page result, edges, child claims, their outbox tasks, the job counters and job completion commit in **one transaction**. Its first statement moves the page to its final status only `WHERE status IN ('Pending','Processing')`. If that touches 0 rows, the transaction stops: it was a duplicate. | Partial writes. A crash before commit means redelivery redoes everything safely. A crash after commit means redelivery hits the guard and is skipped. |
 | The outbox message id is the **page id**, so it's unique per (job, URL) and `ON CONFLICT DO NOTHING` protects it. The dispatcher marks rows sent only after the publisher confirm. A duplicate publish is absorbed by the lease and status guards. | Duplicate publishes from the outbox dispatcher |
 | Job completion is a conditional update: `… SET status='Completed' WHERE id=@id AND status IN ('Pending','Running') AND pages_completed + pages_failed >= pages_discovered`. | Double completion, and racing workers |
+| Content de-dup: under the same job lock, a Completed page whose HTML fingerprint matches an existing original becomes `Duplicate` (not expanded). `UNIQUE (job_id, content_hash) WHERE status='Completed'` backs this up. | Crawling the same page twice under different URLs, including when the aliases are processed concurrently |
 | The page cap: the completing transaction takes `SELECT … FROM crawl_jobs … FOR UPDATE`, then claims at most `max_pages - pages_discovered` new URLs (`INSERT … SELECT … WHERE NOT EXISTS … LIMIT @remaining`). Child claiming is therefore serialized per job, and only per job: different jobs never block each other. | Overshooting the cap under concurrency |
 
-These guarantees are covered by integration tests against a real PostgreSQL in [`tests/Crawler.IntegrationTests`](tests/Crawler.IntegrationTests): sequential duplicate delivery, 5 concurrent deliveries of the same task, the page cap, transient retry, canceled jobs and poison messages.
+These guarantees are covered by integration tests against a real PostgreSQL in [`tests/Crawler.IntegrationTests`](tests/Crawler.IntegrationTests): sequential duplicate delivery, 5 concurrent deliveries of the same task, two same-content aliases processed concurrently, the page cap, transient retry, canceled jobs and poison messages.
 
 ### Retry policy
 
@@ -315,7 +326,7 @@ DLQ'd messages carry `x-death` plus an `x-error` header (exception type and mess
 
 ## Data model and performance
 
-The full schema, with comments, is in [`0001_initial_schema.sql`](src/Crawler.Infrastructure/Persistence/Migrations/0001_initial_schema.sql). In summary:
+The full schema, with comments, is in the [migrations](src/Crawler.Infrastructure/Persistence/Migrations): [`0001_initial_schema.sql`](src/Crawler.Infrastructure/Persistence/Migrations/0001_initial_schema.sql) and [`0002_content_dedup.sql`](src/Crawler.Infrastructure/Persistence/Migrations/0002_content_dedup.sql). In summary:
 
 ```sql
 crawl_jobs(
@@ -323,7 +334,7 @@ crawl_jobs(
   status text CHECK (...), failure_reason text,
   created_at, started_at, completed_at timestamptz,
   pages_discovered int, pages_completed int,      -- completed includes Skipped
-  pages_failed int
+  pages_failed int, pages_duplicate int
 )
   INDEX ix_crawl_jobs_created_at (created_at DESC, id DESC)   -- history, keyset-friendly
 
@@ -332,9 +343,11 @@ pages(
   depth int, parent_page_id uuid NULL,            -- first discoverer → tree shape
   status text CHECK (...), http_status int, content_type text, error text,
   domain_link_ratio numeric(5,4), outgoing_link_count int,
+  content_hash text NULL, duplicate_of_page_id uuid NULL,   -- content de-dup
   attempts int, lease_until timestamptz, discovered_at, finished_at timestamptz
 )
-  UNIQUE ux_pages_job_url (job_id, url)           -- de-dup key; also serves the tree query
+  UNIQUE ux_pages_job_url (job_id, url)           -- URL de-dup key; also serves the tree query
+  UNIQUE ux_pages_job_content_hash (job_id, content_hash) WHERE status = 'Completed'   -- content de-dup
 
 page_links(                                       -- every outgoing edge, incl. external
   id bigint identity PK, job_id uuid FK, from_page_id uuid FK,
@@ -420,7 +433,7 @@ This is a time-boxed (~4h) assignment. The order follows the rubric weights and 
 - The job completes when there are no pending pages. If a worker dies mid-page, the page waits for its 2-minute lease to expire and for redelivery, which delays completion.
 - Migrations run when the API and worker start. This is not suitable for multi-instance production deploys.
 - Default credentials in `docker-compose.yml` are for local use only.
-- De-duplication is by normalized URL, not content. `/` and `/index.html`, or a page and its `<link rel="canonical">`, count as different pages. On books.toscrape.com this crawls the home page twice.
+- Content de-duplication needs an exact match. Pages that embed per-request values (timestamps, CSRF tokens, ads) get different fingerprints and are crawled as separate pages. An alias is still fetched once before it can be recognized, so it costs one request, but it is never expanded.
 - A redirect's target URL isn't recorded as a page of its own. If another page links directly to that target, it's fetched again.
 - Canceling stops new work, but pages that were queued stay `Pending` in the tree. In-flight pages finish.
 - A dead-lettered page is marked `Failed` by the worker. If the database is also down at that moment, the page stays `Processing` and its job never completes. A reaper for expired leases would fix this.

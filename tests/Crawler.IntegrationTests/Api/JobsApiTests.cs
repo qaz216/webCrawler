@@ -106,7 +106,8 @@ public sealed class JobsApiTests(PostgresFixture db) : IDisposable
         Assert.Equal("Completed", (string?)job!["status"]);
         Assert.NotNull(job["startedAt"]);
         Assert.NotNull(job["completedAt"]);
-        Assert.Equal(10, (int?)job["progress"]!["discovered"]);
+        Assert.Equal(11, (int?)job["progress"]!["discovered"]);
+        Assert.Equal(1, (int?)job["progress"]!["duplicates"]);
         Assert.Equal(0, (int?)job["progress"]!["pending"]);
         Assert.Equal(100.0, (double?)job["progress"]!["percent"]);
 
@@ -117,8 +118,14 @@ public sealed class JobsApiTests(PostgresFixture db) : IDisposable
         Assert.Equal(6, root["children"]!.AsArray().Count); // the self-link is not a child
 
         var about = root["children"]!.AsArray().Single(c => (string?)c!["url"] == "https://site.test/about.html")!;
-        var team = Assert.Single(about["children"]!.AsArray())!;
-        Assert.Equal("https://site.test/team.html", (string?)team["url"]);
+        Assert.Equal(2, about["children"]!.AsArray().Count);
+
+        var alias = about["children"]!.AsArray().Single(c => (string?)c!["url"] == "https://site.test/index.html")!;
+        Assert.Equal("Duplicate", (string?)alias["status"]);
+        Assert.Equal("https://site.test/", (string?)alias["duplicateOfUrl"]);
+        Assert.Equal(root["pageId"]!.GetValue<Guid>(), alias["duplicateOfPageId"]!.GetValue<Guid>());
+
+        var team = about["children"]!.AsArray().Single(c => (string?)c!["url"] == "https://site.test/team.html")!;
         Assert.Equal(2, (int?)team["depth"]);
         Assert.Equal(0.0, (double?)team["domainLinkRatio"]);
 

@@ -1,5 +1,6 @@
 using Crawler.Application.Abstractions;
 using Crawler.Contracts;
+using Crawler.Domain.Content;
 using Crawler.Domain.Jobs;
 using Crawler.Domain.Urls;
 using Microsoft.Extensions.Logging;
@@ -60,11 +61,15 @@ public sealed class PageTaskHandler(
             throw;
         }
 
-        var recorded = await store.CompletePageAsync(outcome, cancellationToken);
-        if (!recorded)
+        switch (await store.CompletePageAsync(outcome, cancellationToken))
         {
-            logger.LogWarning("Page {PageId} was finished by another consumer while we held it", page.PageId);
-            return PageTaskResult.DuplicateIgnored;
+            case PageCompletion.AlreadyFinished:
+                logger.LogWarning("Page {PageId} was finished by another consumer while we held it", page.PageId);
+                return PageTaskResult.DuplicateIgnored;
+            case PageCompletion.RecordedAsDuplicate:
+                logger.LogInformation("Page {PageId} has the same content as an earlier page: {Url} recorded as duplicate",
+                    page.PageId, page.Url);
+                return PageTaskResult.Processed;
         }
 
         logger.LogInformation(
@@ -107,7 +112,8 @@ public sealed class PageTaskHandler(
             fetch.ContentType,
             DomainLinkRatio: DomainLinkRatio.Calculate(links, page.RootHost),
             Links: discovered,
-            ChildUrls: children);
+            ChildUrls: children,
+            ContentHash: ContentFingerprint.Compute(fetch.Html!));
     }
 
     private async Task ReleaseQuietlyAsync(Guid pageId)

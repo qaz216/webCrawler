@@ -96,22 +96,51 @@ public sealed class CrawlStore(NpgsqlDataSource dataSource) : ICrawlStore
             new { pageId }, cancellationToken: cancellationToken));
     }
 
-    public async Task<bool> CompletePageAsync(PageOutcome outcome, CancellationToken cancellationToken)
+    public async Task<PageCompletion> CompletePageAsync(PageOutcome outcome, CancellationToken cancellationToken)
     {
-        if (!outcome.Status.IsTerminal())
+        if (!outcome.Status.IsTerminal() || outcome.Status == PageStatus.Duplicate)
             throw new ArgumentException($"Outcome status must be terminal, was {outcome.Status}.", nameof(outcome));
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        CommandDefinition Command(string sql, object parameters) =>
+        CommandDefinition Command(string sql, object? parameters) =>
             new(sql, parameters, transaction, cancellationToken: cancellationToken);
 
-        // 1. Move the page to its final state — only once. A duplicate delivery stops here.
+        // 1. Lock the page's job row. All completions of a job are serialized from here on, so the
+        //    page cap and "first page with this content wins" hold across concurrent workers.
+        var job = await connection.QuerySingleOrDefaultAsync<JobRow>(Command("""
+            SELECT j.id, j.status, j.max_depth, j.max_pages, j.pages_discovered, j.root_host
+              FROM crawl_jobs j JOIN pages p ON p.job_id = j.id
+             WHERE p.id = @pageId
+               FOR UPDATE OF j
+            """,
+            new { pageId = outcome.PageId }));
+
+        if (job is null)
+            return PageCompletion.AlreadyFinished; // unknown page: nothing to record
+
+        // 2. Content de-duplication: an earlier page of this job with identical HTML is the original.
+        Guid? originalPageId = null;
+        if (outcome.Status == PageStatus.Completed && outcome.ContentHash is not null)
+        {
+            originalPageId = await connection.QuerySingleOrDefaultAsync<Guid?>(Command("""
+                SELECT id FROM pages
+                 WHERE job_id = @jobId AND content_hash = @hash AND status = 'Completed' AND id <> @pageId
+                """,
+                new { jobId = job.Id, hash = outcome.ContentHash, pageId = outcome.PageId }));
+        }
+
+        var isDuplicate = originalPageId is not null;
+        if (isDuplicate)
+            outcome = outcome with { Links = [], ChildUrls = [] }; // the original already holds these
+
+        // 3. Move the page to its final state, only once. A duplicate delivery stops here.
         var page = await connection.QuerySingleOrDefaultAsync<FinishedPageRow>(Command("""
             UPDATE pages
                SET status = @status, http_status = @httpStatus, content_type = @contentType, error = @error,
                    domain_link_ratio = @ratio, outgoing_link_count = @linkCount,
+                   content_hash = @hash, duplicate_of_page_id = @originalPageId,
                    lease_until = NULL, finished_at = now()
              WHERE id = @pageId AND status IN ('Pending', 'Processing')
             RETURNING job_id, depth, parent_page_id
@@ -119,25 +148,20 @@ public sealed class CrawlStore(NpgsqlDataSource dataSource) : ICrawlStore
             new
             {
                 pageId = outcome.PageId,
-                status = outcome.Status.ToString(),
+                status = (isDuplicate ? PageStatus.Duplicate : outcome.Status).ToString(),
                 httpStatus = outcome.HttpStatus,
                 contentType = outcome.ContentType,
                 error = outcome.Error,
-                ratio = outcome.DomainLinkRatio,
-                linkCount = outcome.Status == PageStatus.Completed ? outcome.Links.Count : (int?)null,
+                ratio = isDuplicate ? null : outcome.DomainLinkRatio,
+                linkCount = outcome.Status == PageStatus.Completed && !isDuplicate ? outcome.Links.Count : (int?)null,
+                hash = outcome.Status == PageStatus.Completed ? outcome.ContentHash : null,
+                originalPageId,
             }));
 
         if (page is null)
-            return false;
+            return PageCompletion.AlreadyFinished;
 
-        // 2. Lock the job row: serializes child claiming per job so the page cap holds.
-        var job = await connection.QuerySingleAsync<JobRow>(Command("""
-            SELECT status, max_depth, max_pages, pages_discovered, root_host
-              FROM crawl_jobs WHERE id = @jobId FOR UPDATE
-            """,
-            new { jobId = page.JobId }));
-
-        // 3. Edges (all outgoing links, internal and external).
+        // 4. Edges (all outgoing links, internal and external).
         if (outcome.Links.Count > 0)
         {
             await connection.ExecuteAsync(Command("""
@@ -155,7 +179,7 @@ public sealed class CrawlStore(NpgsqlDataSource dataSource) : ICrawlStore
                 }));
         }
 
-        // 4. Claim unseen child URLs, up to the remaining page budget, and queue a task for each.
+        // 5. Claim unseen child URLs, up to the remaining page budget, and queue a task for each.
         var remaining = job.MaxPages - job.PagesDiscovered;
         if (Enum.Parse<JobStatus>(job.Status).IsActive() && remaining > 0 && outcome.ChildUrls.Count > 0)
         {
@@ -191,7 +215,7 @@ public sealed class CrawlStore(NpgsqlDataSource dataSource) : ICrawlStore
             }
         }
 
-        // 5. Point internal edges at the page rows they lead to (new or previously discovered).
+        // 6. Point internal edges at the page rows they lead to (new or previously discovered).
         if (outcome.Links.Any(l => l.IsInternal))
         {
             await connection.ExecuteAsync(Command("""
@@ -203,15 +227,22 @@ public sealed class CrawlStore(NpgsqlDataSource dataSource) : ICrawlStore
                 new { pageId = outcome.PageId, jobId = page.JobId }));
         }
 
-        // 6. Counters, then job completion (conditional, so it happens exactly once).
+        // 7. Counters, then job completion (conditional, so it happens exactly once).
         var failed = outcome.Status == PageStatus.Failed;
         await connection.ExecuteAsync(Command("""
             UPDATE crawl_jobs
                SET pages_completed = pages_completed + @completed,
-                   pages_failed    = pages_failed + @failed
+                   pages_failed    = pages_failed + @failed,
+                   pages_duplicate = pages_duplicate + @duplicate
              WHERE id = @jobId
             """,
-            new { jobId = page.JobId, completed = failed ? 0 : 1, failed = failed ? 1 : 0 }));
+            new
+            {
+                jobId = page.JobId,
+                completed = !failed && !isDuplicate ? 1 : 0,
+                failed = failed ? 1 : 0,
+                duplicate = isDuplicate ? 1 : 0,
+            }));
 
         if (failed && page.ParentPageId is null)
         {
@@ -229,13 +260,13 @@ public sealed class CrawlStore(NpgsqlDataSource dataSource) : ICrawlStore
                 UPDATE crawl_jobs
                    SET status = 'Completed', started_at = coalesce(started_at, now()), completed_at = now()
                  WHERE id = @jobId AND status IN ('Pending', 'Running')
-                   AND pages_completed + pages_failed >= pages_discovered
+                   AND pages_completed + pages_failed + pages_duplicate >= pages_discovered
                 """,
                 new { jobId = page.JobId }));
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return true;
+        return isDuplicate ? PageCompletion.RecordedAsDuplicate : PageCompletion.Recorded;
     }
 
     public async Task<CancelOutcome> CancelJobAsync(Guid jobId, CancellationToken cancellationToken)
@@ -306,6 +337,7 @@ public sealed class CrawlStore(NpgsqlDataSource dataSource) : ICrawlStore
 
     private sealed class JobRow
     {
+        public Guid Id { get; set; }
         public string Status { get; set; } = "";
         public int MaxDepth { get; set; }
         public int MaxPages { get; set; }

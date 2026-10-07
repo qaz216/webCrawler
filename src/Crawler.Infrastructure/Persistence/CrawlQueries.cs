@@ -19,7 +19,7 @@ public sealed class CrawlQueries(NpgsqlDataSource dataSource) : ICrawlQueries
 
         var row = await connection.QuerySingleOrDefaultAsync<JobRow>(new CommandDefinition("""
             SELECT id, url, status, max_depth, max_pages, created_at, started_at, completed_at, failure_reason,
-                   pages_discovered, pages_completed, pages_failed
+                   pages_discovered, pages_completed, pages_failed, pages_duplicate
               FROM crawl_jobs
              WHERE id = @jobId
             """,
@@ -29,7 +29,7 @@ public sealed class CrawlQueries(NpgsqlDataSource dataSource) : ICrawlQueries
             ? null
             : new JobDetails(row.Id, row.Url, Enum.Parse<JobStatus>(row.Status), row.MaxDepth, row.MaxPages,
                 row.CreatedAt, row.StartedAt, row.CompletedAt, row.FailureReason,
-                new JobProgress(row.PagesDiscovered, row.PagesCompleted, row.PagesFailed));
+                new JobProgress(row.PagesDiscovered, row.PagesCompleted, row.PagesFailed, row.PagesDuplicate));
     }
 
     public async Task<IReadOnlyList<PageRecord>> GetPagesAsync(Guid jobId, CancellationToken cancellationToken)
@@ -37,15 +37,18 @@ public sealed class CrawlQueries(NpgsqlDataSource dataSource) : ICrawlQueries
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
 
         var rows = await connection.QueryAsync<PageRow>(new CommandDefinition("""
-            SELECT id, parent_page_id, url, depth, status, http_status, error, domain_link_ratio, outgoing_link_count
-              FROM pages
-             WHERE job_id = @jobId
+            SELECT p.id, p.parent_page_id, p.url, p.depth, p.status, p.http_status, p.error,
+                   p.domain_link_ratio, p.outgoing_link_count, p.duplicate_of_page_id, original.url AS duplicate_of_url
+              FROM pages p
+              LEFT JOIN pages original ON original.id = p.duplicate_of_page_id
+             WHERE p.job_id = @jobId
             """,
             new { jobId }, cancellationToken: cancellationToken));
 
         return rows
             .Select(r => new PageRecord(r.Id, r.ParentPageId, r.Url, r.Depth, Enum.Parse<PageStatus>(r.Status),
-                r.HttpStatus, r.Error, (double?)r.DomainLinkRatio, r.OutgoingLinkCount))
+                r.HttpStatus, r.Error, (double?)r.DomainLinkRatio, r.OutgoingLinkCount,
+                r.DuplicateOfPageId, r.DuplicateOfUrl))
             .ToList();
     }
 
@@ -86,6 +89,7 @@ public sealed class CrawlQueries(NpgsqlDataSource dataSource) : ICrawlQueries
         public int PagesDiscovered { get; set; }
         public int PagesCompleted { get; set; }
         public int PagesFailed { get; set; }
+        public int PagesDuplicate { get; set; }
     }
 
     private sealed class JobListRow
@@ -110,5 +114,7 @@ public sealed class CrawlQueries(NpgsqlDataSource dataSource) : ICrawlQueries
         public string? Error { get; set; }
         public decimal? DomainLinkRatio { get; set; }
         public int? OutgoingLinkCount { get; set; }
+        public Guid? DuplicateOfPageId { get; set; }
+        public string? DuplicateOfUrl { get; set; }
     }
 }

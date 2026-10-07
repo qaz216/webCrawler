@@ -105,8 +105,11 @@ public sealed class CrawlHarness
         await using var connection = await _dataSource.OpenConnectionAsync();
         var pages = await connection.QueryAsync<PageRow>("""
             SELECT p.url, p.depth, p.status, p.http_status, p.domain_link_ratio, p.outgoing_link_count,
-                   p.attempts, parent.url AS parent_url
-              FROM pages p LEFT JOIN pages parent ON parent.id = p.parent_page_id
+                   p.attempts, parent.url AS parent_url, original.url AS duplicate_of_url,
+                   (SELECT count(*) FROM pages c WHERE c.parent_page_id = p.id) AS child_count
+              FROM pages p
+              LEFT JOIN pages parent ON parent.id = p.parent_page_id
+              LEFT JOIN pages original ON original.id = p.duplicate_of_page_id
              WHERE p.job_id = @jobId
             """, new { jobId });
 
@@ -136,6 +139,7 @@ public sealed class CrawlHarness
         public int PagesDiscovered { get; set; }
         public int PagesCompleted { get; set; }
         public int PagesFailed { get; set; }
+        public int PagesDuplicate { get; set; }
         public DateTime? StartedAt { get; set; }
         public DateTime? CompletedAt { get; set; }
     }
@@ -150,5 +154,7 @@ public sealed class CrawlHarness
         public int? OutgoingLinkCount { get; set; }
         public int Attempts { get; set; }
         public string? ParentUrl { get; set; }
+        public string? DuplicateOfUrl { get; set; }
+        public long ChildCount { get; set; }
     }
 }

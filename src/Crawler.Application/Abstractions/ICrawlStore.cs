@@ -20,12 +20,25 @@ public interface ICrawlStore
     /// <summary>
     /// Records a page result in one transaction: page row, edges, newly claimed child pages
     /// (respecting the job's page cap), their outbox tasks, job counters and job completion.
-    /// Returns false if the page had already reached a terminal state (duplicate delivery).
+    /// A Completed page whose <see cref="PageOutcome.ContentHash"/> matches a page already crawled in
+    /// the job is stored as <see cref="PageStatus.Duplicate"/> instead, and not expanded.
     /// </summary>
-    Task<bool> CompletePageAsync(PageOutcome outcome, CancellationToken cancellationToken);
+    Task<PageCompletion> CompletePageAsync(PageOutcome outcome, CancellationToken cancellationToken);
 
     /// <summary>Cancels a Pending or Running job. Workers drop its remaining tasks.</summary>
     Task<CancelOutcome> CancelJobAsync(Guid jobId, CancellationToken cancellationToken);
+}
+
+public enum PageCompletion
+{
+    /// <summary>Stored as given.</summary>
+    Recorded,
+
+    /// <summary>Same content as an earlier page of the job: stored as Duplicate, links not followed.</summary>
+    RecordedAsDuplicate,
+
+    /// <summary>The page was already in a terminal state (duplicate message delivery); nothing written.</summary>
+    AlreadyFinished,
 }
 
 public enum CancelOutcome
@@ -62,7 +75,8 @@ public sealed record PageOutcome(
     string? Error = null,
     double? DomainLinkRatio = null,
     IReadOnlyList<DiscoveredLink>? Links = null,
-    IReadOnlyList<string>? ChildUrls = null)
+    IReadOnlyList<string>? ChildUrls = null,
+    string? ContentHash = null)
 {
     public IReadOnlyList<DiscoveredLink> Links { get; init; } = Links ?? [];
 

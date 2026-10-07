@@ -23,13 +23,14 @@ public class CrawlPipelineTests(PostgresFixture db)
         Assert.Equal("Completed", summary.Status);
         Assert.NotNull(summary.StartedAt);
         Assert.NotNull(summary.CompletedAt);
-        Assert.Equal(10, summary.PagesDiscovered);
+        Assert.Equal(11, summary.PagesDiscovered);
         Assert.Equal(9, summary.PagesCompleted); // includes the skipped PDF
         Assert.Equal(1, summary.PagesFailed);    // the 404
+        Assert.Equal(1, summary.PagesDuplicate); // /index.html = same content as /
 
         var pages = await harness.GetPagesAsync(job.JobId);
         Assert.Equal(
-            ["/", "/about.html", "/blog/post.html", "/files/manual.pdf", "/flaky.html", "/missing.html",
+            ["/", "/about.html", "/blog/post.html", "/files/manual.pdf", "/flaky.html", "/index.html", "/missing.html",
              "/products/", "/products/a.html", "/products/b.html", "/team.html"],
             pages.Keys.Order(StringComparer.Ordinal));
 
@@ -38,7 +39,7 @@ public class CrawlPipelineTests(PostgresFixture db)
 
         // Home: 8 distinct links (dup About, mailto and fragment collapse), 7 internal.
         AssertPage(pages["/"], depth: 0, "Completed", ratio: 0.875m, links: 8, parent: null);
-        AssertPage(pages["/about.html"], depth: 1, "Completed", ratio: 0.6667m, links: 3, parent: "/");
+        AssertPage(pages["/about.html"], depth: 1, "Completed", ratio: 0.75m, links: 4, parent: "/");
         AssertPage(pages["/products/"], depth: 1, "Completed", ratio: 1m, links: 4, parent: "/");
         AssertPage(pages["/blog/post.html"], depth: 1, "Completed", ratio: 0.3333m, links: 3, parent: "/"); // www./blog. are external
         AssertPage(pages["/flaky.html"], depth: 1, "Completed", ratio: 1m, links: 1, parent: "/");
@@ -50,11 +51,48 @@ public class CrawlPipelineTests(PostgresFixture db)
         Assert.Equal(404, pages["/missing.html"].HttpStatus);
         Assert.Equal("Skipped", pages["/files/manual.pdf"].Status);
 
+        // Same HTML as the home page under another URL: recorded once, the alias points at it.
+        var alias = pages["/index.html"];
+        Assert.Equal("Duplicate", alias.Status);
+        Assert.Equal("https://site.test/", alias.DuplicateOfUrl);
+        Assert.Equal("/about.html", new Uri(alias.ParentUrl!).PathAndQuery);
+        Assert.Null(alias.DomainLinkRatio);
+
         // Transient 503 was retried and succeeded on the second attempt.
         Assert.Equal(2, pages["/flaky.html"].Attempts);
 
         // No URL fetched twice, even though several are linked from multiple pages.
         Assert.All(harness.Site.Requests.Where(r => r.Key != "/flaky.html"), r => Assert.Equal(1, r.Value));
+    }
+
+    [Fact]
+    public async Task Pages_with_identical_content_are_crawled_once_even_when_processed_concurrently()
+    {
+        // Start at /about.html: it links to both "/" and "/index.html", which serve identical HTML.
+        var harness = new CrawlHarness(db.DataSource);
+        var job = await harness.StartJobAsync("/about.html", maxDepth: 2);
+        var root = Assert.Single(await harness.DequeueTasksAsync(job.JobId));
+        await harness.Handler.HandleAsync(root, CancellationToken.None);
+
+        // Deliver all children at once, so the two aliases race each other.
+        var children = await harness.DequeueTasksAsync(job.JobId);
+        await Task.WhenAll(children.Select(task => harness.Handler.HandleAsync(task, CancellationToken.None)));
+
+        var pages = await harness.GetPagesAsync(job.JobId);
+        var aliases = new[] { pages["/"], pages["/index.html"] };
+        var original = Assert.Single(aliases, p => p.Status == "Completed");
+        var duplicate = Assert.Single(aliases, p => p.Status == "Duplicate");
+        Assert.Equal(original.Url, duplicate.DuplicateOfUrl);
+
+        // Only the original is expanded: its links became pages, the duplicate's did not.
+        Assert.True(original.ChildCount > 0);
+        Assert.Equal(0, duplicate.ChildCount);
+
+        await harness.RunToCompletionAsync(job.JobId);
+        var summary = await harness.GetJobAsync(job.JobId);
+        Assert.Equal("Completed", summary.Status);
+        Assert.Equal(1, summary.PagesDuplicate);
+        Assert.Equal(summary.PagesDiscovered, summary.PagesCompleted + summary.PagesFailed + summary.PagesDuplicate);
     }
 
     [Fact]
