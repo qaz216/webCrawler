@@ -35,8 +35,7 @@ export function StartCrawlPage() {
           <span className="byline-product">Alteva Web Crawler</span>
           <span className="byline-divider" aria-hidden="true" />
           <span className="byline-author">
-            <span className="byline-avatar" aria-hidden="true">AG</span>
-            <span><span className="byline-label">Presented by</span> <strong>Aryeh Golob</strong></span>
+            <span className="byline-label">Presented by</span> <strong>Aryeh Golob</strong>
           </span>
         </p>
       </div>

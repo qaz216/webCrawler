@@ -151,12 +151,12 @@ code, .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; f
 .hero-kicker { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; font-weight: 600; color: var(--accent); background: var(--accent-soft); padding: 0.3rem 0.75rem; border-radius: 999px; margin-bottom: 1rem; }
 .hero-title { font-size: clamp(1.9rem, 4.5vw, 2.9rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 0.9rem; }
 .gradient-text { background: var(--gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.hero-byline { display: inline-flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 0.6rem 1rem; margin: 0.25rem auto 0; padding: 0.55rem 0.6rem 0.55rem 1.1rem; border-radius: 999px; background: color-mix(in srgb, var(--surface) 75%, transparent); border: 1px solid var(--border); box-shadow: var(--shadow); backdrop-filter: blur(8px); }
+.hero-byline { display: inline-flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 0.6rem 1rem; margin: 0.25rem auto 0; padding: 0.6rem 1.25rem; border-radius: 999px; background: color-mix(in srgb, var(--surface) 75%, transparent); border: 1px solid var(--border); box-shadow: var(--shadow); backdrop-filter: blur(8px); }
 .byline-product { font-weight: 700; font-size: 1rem; letter-spacing: -0.01em; background: var(--gradient); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .byline-divider { width: 1px; height: 1.4rem; background: var(--border); }
-.byline-author { display: inline-flex; align-items: center; gap: 0.55rem; font-size: 0.95rem; color: var(--text); padding-right: 0.4rem; }
+.byline-author { font-size: 0.95rem; color: var(--text); white-space: nowrap; }
+.byline-author strong { font-weight: 600; }
 .byline-label { color: var(--muted); }
-.byline-avatar { display: inline-grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 50%; background: var(--gradient); color: #fff; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.02em; box-shadow: 0 4px 12px -4px rgb(79 70 229 / 60%); }
 @media (max-width: 480px) { .byline-divider { display: none; } .hero-byline { border-radius: 16px; padding: 0.7rem 1rem; } }
 .hero-card { padding: 1.6rem; box-shadow: var(--shadow-lg); border-color: color-mix(in srgb, var(--accent) 25%, var(--border)); }
 
