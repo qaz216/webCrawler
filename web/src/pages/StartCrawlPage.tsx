@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
-import { ArrowRight, Globe, Zap } from "lucide-react";
+import { ArrowRight, Globe } from "lucide-react";
 import { ApiError } from "../api/client";
 import { useCreateJob } from "../api/hooks";
 import { ErrorPanel } from "../components/Feedback";
@@ -29,8 +29,6 @@ export function StartCrawlPage() {
     <div className="hero">
       <div className="hero-glow" aria-hidden="true" />
       <div className="hero-copy">
-        <p className="hero-kicker"><Zap size={14} aria-hidden="true" /> Asynchronous, event-driven crawling</p>
-        <h1 className="hero-title">Map any website. <span className="gradient-text">See where its links lead.</span></h1>
         <p className="hero-byline">
           <span className="byline-product">Alteva Web Crawler</span>
           <span className="byline-divider" aria-hidden="true" />
@@ -38,6 +36,7 @@ export function StartCrawlPage() {
             <span className="byline-label">Presented by</span> <strong>Aryeh Golob</strong>
           </span>
         </p>
+        <h1 className="hero-title">Map any website. <span className="gradient-text">See where its links lead.</span></h1>
       </div>
 
       <section className="card hero-card">
