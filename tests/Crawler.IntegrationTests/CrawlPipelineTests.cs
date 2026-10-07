@@ -217,16 +217,42 @@ public class CrawlPipelineTests(PostgresFixture db)
     }
 
     [Fact]
-    public async Task Unknown_page_is_a_poison_message()
+    public async Task Unknown_schema_version_is_a_poison_message()
     {
         var harness = new CrawlHarness(db.DataSource);
         var job = await harness.StartJobAsync();
         var rootTask = Assert.Single(await harness.DequeueTasksAsync(job.JobId));
 
         await Assert.ThrowsAsync<PoisonMessageException>(() =>
-            harness.Handler.HandleAsync(rootTask with { PageId = Guid.NewGuid() }, CancellationToken.None));
-        await Assert.ThrowsAsync<PoisonMessageException>(() =>
             harness.Handler.HandleAsync(rootTask with { SchemaVersion = 99 }, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Tasks_for_deleted_jobs_are_dropped()
+    {
+        var harness = new CrawlHarness(db.DataSource);
+        var job = await harness.StartJobAsync();
+        var rootTask = Assert.Single(await harness.DequeueTasksAsync(job.JobId));
+
+        await harness.Store.DeleteAllJobsAsync(CancellationToken.None); // the task is still "on the broker"
+
+        Assert.Equal(PageTaskResult.PageNotFound, await harness.Handler.HandleAsync(rootTask, CancellationToken.None));
+        Assert.Equal(0, harness.Site.RequestCount("/"));
+    }
+
+    [Fact]
+    public async Task Delete_all_removes_jobs_pages_links_and_pending_outbox_messages()
+    {
+        var harness = new CrawlHarness(db.DataSource);
+        var crawled = await harness.StartJobAsync(maxDepth: 1);
+        await harness.RunToCompletionAsync(crawled.JobId);
+        var queued = await harness.StartJobAsync(); // root task still unsent in the outbox
+
+        var deleted = await harness.Store.DeleteAllJobsAsync(CancellationToken.None);
+
+        Assert.True(deleted >= 2);
+        Assert.Equal((0L, 0L, 0L), await harness.CountRowsAsync(crawled.JobId));
+        Assert.Equal((0L, 0L, 0L), await harness.CountRowsAsync(queued.JobId));
     }
 
     private static void AssertPage(

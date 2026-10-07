@@ -216,6 +216,22 @@ public sealed class JobsApiTests(PostgresFixture db) : IDisposable
     }
 
     [Fact]
+    public async Task Clear_all_deletes_every_job()
+    {
+        var client = _factory.CreateClient();
+        var created = await client.PostAsJsonAsync("/api/jobs", new { url = "https://site.test/" });
+        var jobId = (await created.Content.ReadFromJsonAsync<JsonObject>())!["jobId"]!.GetValue<Guid>();
+
+        var response = await client.DeleteAsync("/api/jobs");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True((int)(await response.Content.ReadFromJsonAsync<JsonObject>())!["deleted"]! >= 1);
+        var history = await client.GetFromJsonAsync<JsonObject>("/api/jobs");
+        Assert.Equal(0, (long?)history!["totalCount"]);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/jobs/{jobId}")).StatusCode);
+    }
+
+    [Fact]
     public async Task Liveness_endpoint_is_healthy()
     {
         var response = await _factory.CreateClient().GetAsync("/health/live");

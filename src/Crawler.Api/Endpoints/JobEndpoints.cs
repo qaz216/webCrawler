@@ -9,6 +9,8 @@ public sealed record CreateJobResponse(Guid JobId);
 
 public sealed record JobTreeResponse(Guid JobId, string Status, PageTreeNode? Root);
 
+public sealed record ClearJobsResponse(int Deleted);
+
 public static class JobEndpoints
 {
     public const int MaxPageSize = 100;
@@ -22,6 +24,11 @@ public static class JobEndpoints
             .WithSummary("Start a crawl job. Returns immediately; the crawl runs asynchronously.")
             .Produces<CreateJobResponse>(StatusCodes.Status202Accepted)
             .ProducesValidationProblem();
+
+        jobs.MapDelete("/", ClearJobs)
+            .WithName("ClearJobs")
+            .WithSummary("Delete all jobs and their results (history). Running jobs are stopped. Cannot be undone.")
+            .Produces<ClearJobsResponse>();
 
         jobs.MapGet("/", ListJobs)
             .WithName("ListJobs")
@@ -56,6 +63,9 @@ public static class JobEndpoints
         var job = await jobs.CreateAsync(request.Url, request.MaxDepth, cancellationToken);
         return Results.AcceptedAtRoute("GetJob", new { jobId = job.JobId }, new CreateJobResponse(job.JobId));
     }
+
+    private static async Task<IResult> ClearJobs(JobService jobs, CancellationToken cancellationToken) =>
+        Results.Ok(new ClearJobsResponse(await jobs.ClearAllAsync(cancellationToken)));
 
     private static async Task<IResult> ListJobs(ICrawlQueries queries, CancellationToken cancellationToken, int page = 1, int pageSize = 20)
     {

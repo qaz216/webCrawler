@@ -299,6 +299,24 @@ public sealed class CrawlStore(NpgsqlDataSource dataSource) : ICrawlStore
         return exists ? CancelOutcome.NotActive : CancelOutcome.NotFound;
     }
 
+    public async Task<int> DeleteAllJobsAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+
+        // Pages and page_links go with their job (ON DELETE CASCADE); outbox rows have no FK, so they
+        // are removed explicitly. Only jobs visible to this statement are deleted: one created
+        // concurrently survives, with its outbox row intact.
+        return await connection.ExecuteScalarAsync<int>(new CommandDefinition("""
+            WITH deleted AS (
+                DELETE FROM crawl_jobs RETURNING id
+            ), outbox AS (
+                DELETE FROM outbox_messages WHERE correlation_id IN (SELECT id FROM deleted)
+            )
+            SELECT count(*) FROM deleted
+            """,
+            cancellationToken: cancellationToken));
+    }
+
     private static CrawlPageTask NewTask(
         Guid jobId, Guid pageId, string url, int depth, int maxDepth, string rootHost, Guid? parentPageId) =>
         new(CrawlPageTask.CurrentSchemaVersion, MessageId: pageId, jobId, pageId, url, depth, maxDepth, rootHost,

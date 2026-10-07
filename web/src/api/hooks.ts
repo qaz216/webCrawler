@@ -60,6 +60,18 @@ export function useCreateJob() {
   });
 }
 
+/** Deletes all jobs; drops every cached job, tree and history page so nothing stale is shown. */
+export function useClearJobs() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: api.clearJobs,
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: ["job"] });
+      return queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    },
+  });
+}
+
 export function useCancelJob(jobId: string) {
   const queryClient = useQueryClient();
   return useMutation({

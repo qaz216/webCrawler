@@ -44,6 +44,13 @@ public sealed class JobService(ICrawlStore store, IOptions<CrawlerOptions> optio
         return job;
     }
 
+    public async Task<int> ClearAllAsync(CancellationToken cancellationToken)
+    {
+        var deleted = await store.DeleteAllJobsAsync(cancellationToken);
+        logger.LogWarning("Cleared crawl history: deleted {Count} jobs and their results", deleted);
+        return deleted;
+    }
+
     public async Task<CancelOutcome> CancelAsync(Guid jobId, CancellationToken cancellationToken)
     {
         var outcome = await store.CancelJobAsync(jobId, cancellationToken);

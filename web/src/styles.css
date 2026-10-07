@@ -142,6 +142,7 @@ code, .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; f
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.35rem; box-shadow: var(--shadow); min-width: 0; }
 .card.narrow { max-width: 640px; margin: 0 auto; }
 .section-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
+.header-actions { display: flex; align-items: center; gap: 0.5rem; }
 
 /* ───────────── Hero (Start Crawl) ───────────── */
 .hero { position: relative; max-width: 760px; margin: 1.5rem auto 0; display: grid; gap: 1.75rem; }

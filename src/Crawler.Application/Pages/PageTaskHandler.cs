@@ -13,6 +13,9 @@ public enum PageTaskResult
     Processed,
     DuplicateIgnored,
     JobNotActive,
+
+    /// <summary>The page no longer exists (its job was deleted); the task is dropped.</summary>
+    PageNotFound,
 }
 
 /// <summary>
@@ -36,7 +39,10 @@ public sealed class PageTaskHandler(
         switch (lease.Outcome)
         {
             case LeaseOutcome.NotFound:
-                throw new PoisonMessageException($"Page {task.PageId} does not exist.");
+                // Pages are created before their task is published, so a missing page means its job
+                // was deleted (history cleared) after the task was queued. Nothing to do: drop it.
+                logger.LogInformation("Page {PageId} no longer exists (job {JobId} deleted); dropping task", task.PageId, task.JobId);
+                return PageTaskResult.PageNotFound;
             case LeaseOutcome.AlreadyFinished:
                 logger.LogInformation("Page {PageId} already processed; ignoring duplicate delivery", task.PageId);
                 return PageTaskResult.DuplicateIgnored;

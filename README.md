@@ -160,6 +160,7 @@ All routes live under `/api`, and Swagger UI is at `/swagger`. Errors use RFC 78
 | GET    | `/api/jobs/{jobId}/tree`       | Hierarchical result (nested nodes)                               |
 | GET    | `/api/jobs?page=1&pageSize=20` | History, most recent first, paginated                            |
 | POST   | `/api/jobs/{jobId}/cancel`     | Cancel a Pending or Running job (optional feature)              |
+| DELETE | `/api/jobs`                    | Clear history: delete all jobs with their pages, links and unsent outbox messages (one transaction) → `{ "deleted": n }`. Running jobs stop. Their tasks already on the broker are dropped by workers. |
 | GET    | `/health/live`, `/health/ready`| Liveness and readiness (DB + broker)                             |
 
 Validation for `POST /api/jobs`:
@@ -323,7 +324,7 @@ Retries happen at two levels.
 ### DLQ handling
 
 These go to `crawl.pages.dlq`:
-- **Poison messages:** JSON that can't be deserialized, an unknown `schemaVersion`, missing required fields, or a `jobId` that doesn't exist. They go to the DLQ immediately with no retries.
+- **Poison messages:** JSON that can't be deserialized, an unknown `schemaVersion`, or missing required fields. They go to the DLQ immediately with no retries. A task whose page **no longer exists** is not poison: pages are written before their task is published, so this only happens when the history was cleared while tasks were queued. Such tasks are acked and dropped with a log line.
 - **Exhausted messages:** transient failures still failing after the last delay tier.
 - **Unexpected exceptions:** after one retry tier, to avoid hot-looping on a bug.
 

@@ -1,5 +1,6 @@
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { useJobs } from "../api/hooks";
+import { Trash2 } from "lucide-react";
+import { useClearJobs, useJobs } from "../api/hooks";
 import { EmptyState, ErrorPanel, Loading } from "../components/Feedback";
 import { RatioMeter } from "../components/RatioMeter";
 import { StatusBadge } from "../components/StatusBadge";
@@ -12,15 +13,31 @@ export function HistoryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const page = Math.max(1, Number(searchParams.get("page")) || 1);
   const jobs = useJobs(page, PAGE_SIZE);
+  const clearJobs = useClearJobs();
+  const totalCount = jobs.data?.totalCount ?? 0;
 
   const goTo = (target: number) => setSearchParams(target === 1 ? {} : { page: String(target) });
+
+  function handleClearAll() {
+    const message = `Delete all ${totalCount} crawl ${totalCount === 1 ? "job" : "jobs"} and their results? `
+      + "Running crawls are stopped. This can't be undone.";
+    if (window.confirm(message)) clearJobs.mutate(undefined, { onSuccess: () => goTo(1) });
+  }
 
   return (
     <section className="card">
       <div className="section-header">
         <h1>Crawl history</h1>
-        <Link to="/" className="button button-small">New crawl</Link>
+        <div className="header-actions">
+          <Link to="/" className="button button-small">New crawl</Link>
+          <button type="button" className="button button-small button-danger" onClick={handleClearAll}
+            disabled={totalCount === 0 || clearJobs.isPending}>
+            <Trash2 size={14} aria-hidden="true" /> {clearJobs.isPending ? "Clearing…" : "Clear all"}
+          </button>
+        </div>
       </div>
+
+      {clearJobs.error && <ErrorPanel error={clearJobs.error} title="Could not clear the history" />}
 
       {jobs.isPending ? (
         <Loading label="Loading history…" />

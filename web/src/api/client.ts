@@ -73,6 +73,8 @@ export const api = {
   listJobs: (page: number, pageSize: number) =>
     request<PagedResult<JobListItem>>(`/api/jobs?page=${page}&pageSize=${pageSize}`),
 
+  clearJobs: () => request<{ deleted: number }>("/api/jobs", { method: "DELETE" }),
+
   cancelJob: (jobId: string) =>
     request<JobDetails>(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" }),
 };

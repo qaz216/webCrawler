@@ -28,6 +28,13 @@ public interface ICrawlStore
 
     /// <summary>Cancels a Pending or Running job. Workers drop its remaining tasks.</summary>
     Task<CancelOutcome> CancelJobAsync(Guid jobId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Deletes every job with its pages, links and unsent outbox messages (one transaction).
+    /// Tasks already on the broker for deleted jobs are dropped by workers (page not found).
+    /// Returns the number of jobs deleted.
+    /// </summary>
+    Task<int> DeleteAllJobsAsync(CancellationToken cancellationToken);
 }
 
 public enum PageCompletion
