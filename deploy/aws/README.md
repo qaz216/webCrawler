@@ -77,6 +77,25 @@ cat /opt/webcrawler/SITE_URL
 - **Your own domain:** point a DNS A record at the instance, then add `SITE_ADDRESS=crawler.example.com`
   to `/opt/webcrawler/.env` and restart (`sudo systemctl restart webcrawler`).
 
+## Public access (no login)
+
+By default every page asks for the demo login. To open the site to anyone with the address:
+
+```bash
+cd /opt/webcrawler && sudo git pull && echo 'CADDYFILE=Caddyfile.public' | sudo tee -a .env && sudo systemctl restart webcrawler
+```
+
+To require the login again, remove that line and restart:
+
+```bash
+cd /opt/webcrawler && sudo sed -i '/^CADDYFILE=/d' .env && sudo systemctl restart webcrawler
+```
+
+Without the login, anyone who finds the address can start crawls (still limited to 200 pages each, and
+private addresses are still refused) and can use **Clear all**. For a login-free site that only you and
+your reviewers can reach, keep `Caddyfile.public` and instead limit the security group's HTTP/HTTPS
+rules to those IP addresses.
+
 ## Troubleshooting
 
 **"Refused to connect" in the browser, and `webcrawler.service failed` in the setup log.** Look at the cause:

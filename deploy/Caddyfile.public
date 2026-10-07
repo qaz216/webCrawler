@@ -1,0 +1,16 @@
+# Same as Caddyfile but WITHOUT the login prompt: anyone with the address can use the app.
+# Enable with CADDYFILE=Caddyfile.public in .env (see deploy/aws/README.md → "Public access").
+# The worker's SSRF protection and the per-job page limit still apply.
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	reverse_proxy web:80
+}
