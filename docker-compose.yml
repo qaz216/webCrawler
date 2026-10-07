@@ -67,7 +67,14 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # The web (React UI) service is added here once the frontend lands.
+  web:
+    build:
+      context: ./web
+    ports:
+      - "3000:80"      # React UI; /api is proxied to the api service
+    depends_on:
+      - api
+    restart: unless-stopped
 
 volumes:
   postgres-data:

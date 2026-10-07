@@ -102,7 +102,7 @@ docker compose up -d --build
 
 | Service              | URL                                   |
 |----------------------|---------------------------------------|
-| React UI _(planned)_ | http://localhost:3000                 |
+| **React UI**         | **http://localhost:3000**             |
 | Crawl API (+Swagger) | http://localhost:8080/swagger         |
 | API health           | http://localhost:8080/health/ready    |
 | Worker health        | http://localhost:8081/health/ready    |
@@ -128,6 +128,8 @@ dotnet run --project src/Crawler.Worker
 ```bash
 cd web && npm install && npm run dev
 ```
+
+The dev UI is at http://localhost:5173.
 
 From the command line (or open http://localhost:8080/swagger):
 
@@ -369,12 +371,36 @@ Notes:
 
 ## Frontend
 
-React + TypeScript + Vite, built to static files and served by nginx in Compose.
+React 19 + TypeScript + Vite, React Router, and TanStack Query for fetching, caching and polling. In Compose, the app is built to static files and served by nginx, which also proxies `/api` to the API container. The browser therefore sees one origin and needs no CORS. In development, Vite's dev server does the same proxying. Code: [`web/src`](web/src).
 
-- **Start Crawl** (`/`): URL input (validated), optional `maxDepth`. Submitting navigates to `/jobs/:id`.
-- **Job Details** (`/jobs/:id`): status badge, timestamps, failure reason, and a progress bar fed by counters. It polls every 1.5s through TanStack Query `refetchInterval` while the job is `Pending`/`Running`, then stops. When complete it shows a collapsible tree: each node has the URL, HTTP status and the ratio as a percentage, with failed or skipped pages marked. A Cancel button appears while the job is running.
-- **History** (`/history`): a paginated table (URL, status, created, completed). Clicking a row opens Job Details.
-- Every screen has explicit loading, error (with retry) and empty states. The API base URL comes from `VITE_API_URL`.
+- **Start Crawl** (`/`): URL and optional `maxDepth`. The API is the single source of validation, and its per-field errors (from problem details) are shown under the matching inputs. A successful submit navigates straight to `/jobs/:id`.
+- **Job Details** (`/jobs/:id`):
+  - Status badge, timestamps, a live duration, and the failure reason if the job failed.
+  - A progress bar with counts: finished/discovered, crawled, failed, duplicates, pending.
+  - A Cancel button while the job runs.
+  - Polling: the status every 1.5 s and the tree every 3 s, but only while the job is `Pending`/`Running`. The tree's query key includes the job status, so the final tree loads the moment the job completes. Partial results show while the crawl runs.
+- **Page tree:**
+  - Collapsible nodes, with Expand all / Collapse all.
+  - Each page shows its path, status, HTTP code, the **Domain Link Ratio** as a percentage with a small bar, and its link count.
+  - Failed and skipped pages show their reason.
+  - **Duplicates** show "Same content as `/`, not crawled again". Clicking the original expands the tree to it and highlights it.
+- **History** (`/history`): a paginated table (URL, status, created, duration, pages). The page number is kept in the URL (`?page=2`). Clicking a row opens Job Details. The table auto-refreshes while any listed job is still running.
+- **States:** every screen has explicit loading, error (with retry, plus the server's correlation id for log lookup) and empty states. An unknown job id gets a "Job not found" page. A failed background poll keeps the last data and shows a warning instead of blanking the page.
+- **Tests:** Vitest + Testing Library cover the formatting and tree helpers, the tree component (expand/collapse, duplicate links) and the Start Crawl form against a mocked API (success, field validation errors, API unreachable).
+
+```bash
+cd web
+```
+
+```bash
+npm install
+```
+
+```bash
+npm run dev
+```
+
+The dev server runs at http://localhost:5173, with `/api` proxied to `localhost:8080`. `npm test` runs the tests and `npm run build` type-checks and builds.
 
 ## Observability
 
@@ -393,7 +419,8 @@ React + TypeScript + Vite, built to static files and served by nginx in Compose.
 | Integration | **Idempotency:** deliver the same `CrawlPageTask` twice (and concurrently) and assert no duplicate `pages`/`page_links` rows and correct counters | Same harness |
 | Unit | `FailurePolicy`: transient → each delay tier → DLQ; poison → DLQ at once; unexpected → one retry | xUnit |
 | End-to-end | The **real worker host** (outbox dispatcher, RabbitMQ consumer, handler) crawls the fixture site through a real broker. A page that's always down goes through all retry tiers into the DLQ and fails the job. A malformed message goes straight to the DLQ. | Testcontainers RabbitMQ + PostgreSQL |
-| CI | GitHub Actions: `dotnet build`, `dotnet test`, `npm ci && npm run build` | `.github/workflows/ci.yml` |
+| Frontend | Formatting and tree helpers, the tree component (expand/collapse, duplicate → original), and the Start Crawl form against a mocked API | Vitest + Testing Library (`cd web && npm test`) |
+| CI | GitHub Actions: `dotnet build`, `dotnet test`, `npm ci && npm run build` | `.github/workflows/ci.yml` _(planned)_ |
 
 ## Priorities, cuts and next steps
 
