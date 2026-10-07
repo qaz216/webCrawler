@@ -145,8 +145,8 @@ function TreeItem({ node, rootUrl, isExpanded: isNodeExpanded, highlighted, fres
         </div>
 
         <div className="tree-meta">
-          <StatusBadge status={node.status} />
-          {node.httpStatus !== null && <span className="http-code" title="HTTP status">{node.httpStatus}</span>}
+          <span className="status-cell"><StatusBadge status={node.status} /></span>
+          <span className="http-code" title={node.httpStatus === null ? undefined : "HTTP status"}>{node.httpStatus ?? ""}</span>
           <RatioMeter ratio={node.domainLinkRatio} />
           <span className="link-count" title="Distinct outgoing links">
             {node.outgoingLinkCount === null ? "" : `${node.outgoingLinkCount} links`}
