@@ -9,7 +9,7 @@ namespace Crawler.Domain.Urls;
 /// <para>
 /// Uses the last two labels, or the last three when the host ends in a common two-part country
 /// suffix (co.uk, com.au, co.il, …). The full Public Suffix List would also cover rarer suffixes and
-/// shared-hosting domains (user1.github.io vs user2.github.io); see README → Known limitations.
+/// shared-hosting domains (user1.github.io vs user2.github.io would count as one site).
 /// </para>
 /// </summary>
 public static class RootDomain

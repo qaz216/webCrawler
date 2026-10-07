@@ -20,8 +20,6 @@ A job-based web crawler made of event-driven microservices. A user submits a URL
 8. [Frontend](#frontend)
 9. [Observability](#observability)
 10. [Testing](#testing)
-11. [Priorities, cuts and next steps](#priorities-cuts-and-next-steps)
-12. [Known limitations](#known-limitations)
 
 ---
 
@@ -75,7 +73,7 @@ The dependency direction is `Api/Worker → Infrastructure → Application → D
   - Pages are crawled in parallel: 4 at a time per worker process, and across worker instances. To scale with `docker compose up --scale worker=3`, first remove the worker's fixed host port mapping.
   - A slow or failing page retries alone instead of restarting the whole job.
   - Idempotency, retries and the DLQ apply at a meaningful granularity.
-- **The worker owns writes for crawl results. The API owns job creation and all reads.** Both share one database through the Infrastructure layer. For a two-service system, a shared schema is pragmatic. A stricter split (the worker emits `PageCrawled` events and the API projects them) is listed under next steps.
+- **The worker owns writes for crawl results. The API owns job creation and all reads.** Both share one database through the Infrastructure layer. For a two-service system, a shared schema is pragmatic. A stricter split would have the worker emit `PageCrawled` events and the API project them into its own tables.
 - **Transactional outbox.** Page results, edges, newly claimed child pages and the outgoing child tasks are written in **one DB transaction**. A dispatcher publishes the outbox rows to RabbitMQ afterwards. This closes the "committed to the DB but crashed before publishing" gap that would silently lose parts of the tree.
 - **The DB is the source of truth for de-duplication**, enforced with unique constraints rather than in-memory sets. Multiple worker instances and redeliveries are therefore safe.
 - **Dapper and hand-written SQL instead of EF Core.** The correctness-critical writes are `ON CONFLICT DO NOTHING`, `UPDATE … RETURNING`, `INSERT … SELECT … LIMIT` and `FOR UPDATE`. In SQL they're explicit and reviewable, whereas EF would hide them or need raw SQL anyway. Migrations are numbered `.sql` files embedded in the Infrastructure assembly and applied by a ~50-line migrator.
@@ -325,7 +323,7 @@ These go to `crawl.pages.dlq`:
 - **Exhausted messages:** transient failures still failing after the last delay tier.
 - **Unexpected exceptions:** after one retry tier, to avoid hot-looping on a bug.
 
-DLQ'd messages carry `x-death` plus an `x-error` header (exception type and message). The worker logs them at `Error` with the jobId. When a page task is dead-lettered, its page is marked `Failed` with reason `dead-lettered` so the job can still finish. There is no automatic replay. A human inspects messages in the RabbitMQ UI and can move them back with a shovel. A small replay endpoint is listed under next steps.
+DLQ'd messages carry `x-death` plus an `x-error` header (exception type and message). The worker logs them at `Error` with the jobId. When a page task is dead-lettered, its page is marked `Failed` with reason `dead-lettered` so the job can still finish. There is no automatic replay. A human inspects messages in the RabbitMQ UI and can move them back with a shovel.
 
 ### Cancellation
 
@@ -444,47 +442,3 @@ The dev server runs at http://localhost:5173, with `/api` proxied to `localhost:
 | End-to-end | The **real worker host** (outbox dispatcher, RabbitMQ consumer, handler) crawls the fixture site through a real broker. A page that's always down goes through all retry tiers into the DLQ and fails the job. A malformed message goes straight to the DLQ. | Testcontainers RabbitMQ + PostgreSQL |
 | Frontend | Formatting and tree helpers, the tree component (expand/collapse, duplicate → original), and the Start Crawl form against a mocked API | Vitest + Testing Library (`cd web && npm test`) |
 | CI | On every push to `main` and every pull request, three parallel jobs. **Backend:** restore, build (warnings fail it), all .NET tests, including the Testcontainers integration tests. **Frontend:** `npm ci`, type check, Vitest, production build. **Docker:** builds the api/worker/web images and validates the production Compose overlay, both Caddyfiles and the deploy scripts. Test results are uploaded as an artifact. | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |
-
-## Priorities, cuts and next steps
-
-This is a time-boxed (~4h) assignment. The order follows the rubric weights and the riskiest parts first.
-
-**Implemented first, and why**
-1. **Domain logic and unit tests** (normalization, ratio, link extraction). This is the correctness core (30% of the rubric). It's cheap to get right in isolation and everything else depends on it.
-2. **DB schema with unique constraints, and the idempotent page handler.** These are the hard guarantees (idempotency, de-dup, the cap). They're easiest to design in from the start and painful to retrofit.
-3. **RabbitMQ topology with retry tiers and the DLQ, plus the outbox.** This is the event-driven robustness the assignment calls out.
-4. **API endpoints and health checks**, then **Docker Compose**, so the whole system runs with one command.
-5. **The React UI.** The workflow comes first and styling is kept minimal.
-6. **The fixture-based integration test and the CI workflow.**
-
-**Cut (or kept minimal), and why**
-- **SSE/SignalR push.** Polling meets the requirement and has fewer moving parts.
-- **robots.txt, per-host rate limiting and politeness delays.** These are important for a real crawler but outside the evaluated scope. Only same-host crawling with a page cap is in place.
-- **Authentication and multi-tenancy.** Not requested.
-- **A separate read model or event projection.** The API reads the worker's tables directly. Documented as a trade-off.
-- **A rich tree UI** (virtualization, search). 200 nodes don't need it.
-- **Query-string canonicalization** (sorting params, stripping `utm_*`). Risky to get wrong and not required.
-
-**Next, with more time**
-- SignalR or SSE progress push to replace polling.
-- robots.txt, a per-domain concurrency limit and crawl-delay handling. Also a canonical `<link rel="canonical">` option.
-- A DLQ replay endpoint and admin view. Alerting on DLQ depth.
-- OpenTelemetry tracing across API → broker → worker, and Prometheus metrics.
-- The worker emitting domain events (`PageCrawled`, `JobCompleted`) and the API projecting them, so each service owns its data.
-- Keyset pagination for history. Partitioning or archiving of `page_links` for large jobs.
-- Load test with a large fixture site. Tuning of prefetch and worker concurrency.
-- Contract tests for message schemas, plus a schema-versioning policy.
-
-## Known limitations
-
-- JavaScript-rendered links are not discovered, because there's no headless browser.
-- The root domain uses a built-in list of common two-part country suffixes, not the full [Public Suffix List](https://publicsuffix.org/). Rare suffixes (`gov.bc.ca`) and shared-hosting domains aren't recognized, so `alice.github.io` and `bob.github.io` would count as one site. Bundling the Public Suffix List is the production fix.
-- The tree shows one parent per page (the first discoverer). Other inbound links exist only in `page_links`.
-- The job completes when there are no pending pages. If a worker dies mid-page, the page waits for its 2-minute lease to expire and for redelivery, which delays completion.
-- Migrations run when the API and worker start. This is not suitable for multi-instance production deploys.
-- Default credentials in `docker-compose.yml` are for local use only.
-- Content de-duplication needs an exact match. Pages that embed per-request values (timestamps, CSRF tokens, ads) get different fingerprints and are crawled as separate pages. An alias is still fetched once before it can be recognized, so it costs one request, but it is never expanded.
-- A redirect's target URL isn't recorded as a page of its own. If another page links directly to that target, it's fetched again. Content de-duplication then records it as a `Duplicate`, so this costs a request but no repeated crawl.
-- When a site serves the same page on several subdomains (`newsmax.com/` and `www.newsmax.com/`), both are crawled. Content de-duplication only merges them if the HTML is identical, which dynamic pages usually aren't.
-- Canceling stops new work, but pages that were queued stay `Pending` in the tree. In-flight pages finish.
-- A dead-lettered page is marked `Failed` by the worker. If the database is also down at that moment, the page stays `Processing` and its job never completes. A reaper for expired leases would fix this.
