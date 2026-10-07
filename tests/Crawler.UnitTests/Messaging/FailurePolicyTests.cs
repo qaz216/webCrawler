@@ -2,7 +2,7 @@ using System.Text.Json;
 using Crawler.Application;
 using Crawler.Infrastructure.Messaging;
 
-namespace Crawler.IntegrationTests.Messaging;
+namespace Crawler.UnitTests.Messaging;
 
 public class FailurePolicyTests
 {

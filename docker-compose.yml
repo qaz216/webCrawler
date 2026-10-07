@@ -35,6 +35,22 @@ services:
       retries: 10
     restart: unless-stopped
 
+  api:
+    build:
+      context: .
+      dockerfile: src/Crawler.Api/Dockerfile
+    environment:
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=crawler;Username=crawler;Password=crawler
+      RabbitMq__Uri: amqp://guest:guest@rabbitmq:5672/
+    ports:
+      - "8080:8080"    # REST API, /swagger, /health/live, /health/ready
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
   worker:
     build:
       context: .
@@ -51,8 +67,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # The api and web services are added here as their projects land
-  # (see README → Solution layout).
+  # The web (React UI) service is added here once the frontend lands.
 
 volumes:
   postgres-data:

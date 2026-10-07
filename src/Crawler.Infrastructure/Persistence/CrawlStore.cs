@@ -238,6 +238,26 @@ public sealed class CrawlStore(NpgsqlDataSource dataSource) : ICrawlStore
         return true;
     }
 
+    public async Task<CancelOutcome> CancelJobAsync(Guid jobId, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+
+        var canceled = await connection.ExecuteAsync(new CommandDefinition("""
+            UPDATE crawl_jobs SET status = 'Canceled', completed_at = now()
+             WHERE id = @jobId AND status IN ('Pending', 'Running')
+            """,
+            new { jobId }, cancellationToken: cancellationToken));
+
+        if (canceled == 1)
+            return CancelOutcome.Canceled;
+
+        var exists = await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            "SELECT EXISTS (SELECT 1 FROM crawl_jobs WHERE id = @jobId)",
+            new { jobId }, cancellationToken: cancellationToken));
+
+        return exists ? CancelOutcome.NotActive : CancelOutcome.NotFound;
+    }
+
     private static CrawlPageTask NewTask(
         Guid jobId, Guid pageId, string url, int depth, int maxDepth, string rootHost, Guid? parentPageId) =>
         new(CrawlPageTask.CurrentSchemaVersion, MessageId: pageId, jobId, pageId, url, depth, maxDepth, rootHost,

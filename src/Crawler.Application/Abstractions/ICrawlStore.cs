@@ -23,6 +23,16 @@ public interface ICrawlStore
     /// Returns false if the page had already reached a terminal state (duplicate delivery).
     /// </summary>
     Task<bool> CompletePageAsync(PageOutcome outcome, CancellationToken cancellationToken);
+
+    /// <summary>Cancels a Pending or Running job. Workers drop its remaining tasks.</summary>
+    Task<CancelOutcome> CancelJobAsync(Guid jobId, CancellationToken cancellationToken);
+}
+
+public enum CancelOutcome
+{
+    Canceled,
+    NotFound,
+    NotActive,
 }
 
 public sealed record NewJob(string Url, string RootHost, int MaxDepth, int MaxPages);

@@ -1,6 +1,6 @@
 using Crawler.Domain.Urls;
 
-namespace Crawler.Domain.Tests.Urls;
+namespace Crawler.UnitTests.Urls;
 
 public class DomainLinkRatioTests
 {

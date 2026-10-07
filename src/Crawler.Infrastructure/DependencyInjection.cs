@@ -1,6 +1,7 @@
 using System.Net;
 using Crawler.Application;
 using Crawler.Application.Abstractions;
+using Crawler.Application.Jobs;
 using Crawler.Application.Pages;
 using Crawler.Infrastructure.Health;
 using Crawler.Infrastructure.Http;
@@ -37,6 +38,7 @@ public static class DependencyInjection
         services.AddSingleton<DatabaseMigrator>();
         services.AddSingleton<ICrawlStore, CrawlStore>();
         services.AddSingleton<OutboxStore>();
+        services.AddScoped<JobService>();
 
         services.AddSingleton<RabbitMqConnectionProvider>();
         services.AddSingleton<MessagePublisher>();
@@ -46,6 +48,13 @@ public static class DependencyInjection
             .AddCheck<PostgresHealthCheck>("postgres", tags: ["ready"])
             .AddCheck<RabbitMqHealthCheck>("rabbitmq", tags: ["ready"]);
 
+        return services;
+    }
+
+    /// <summary>API only: read queries for job status, tree and history.</summary>
+    public static IServiceCollection AddCrawlerApi(this IServiceCollection services)
+    {
+        services.AddSingleton<ICrawlQueries, CrawlQueries>();
         return services;
     }
 

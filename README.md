@@ -73,8 +73,9 @@ src/
   Crawler.Contracts/       # Message DTOs shared by API and worker (versioned)
 web/                       # React app
 tests/
-  Crawler.Domain.Tests/        # Unit tests: normalization, ratio, link extraction
-  Crawler.IntegrationTests/    # Fixture-site crawl against Testcontainers Postgres
+  Crawler.UnitTests/           # Normalization, ratio, link extraction, tree building, retry/DLQ policy
+  Crawler.IntegrationTests/    # Fixture-site crawl, idempotency, API and worker end-to-end
+                               # against Testcontainers PostgreSQL + RabbitMQ
 docker-compose.yml
 ```
 
@@ -93,17 +94,15 @@ The dependency direction is `Api/Worker → Infrastructure → Application → D
 
 ## Running locally
 
-_(planned. Target experience below.)_
-
 Prerequisites: Docker Desktop (or Docker Engine + Compose v2).
 
 ```bash
-docker compose up --build
+docker compose up -d --build
 ```
 
 | Service              | URL                                   |
 |----------------------|---------------------------------------|
-| React UI             | http://localhost:3000                 |
+| React UI _(planned)_ | http://localhost:3000                 |
 | Crawl API (+Swagger) | http://localhost:8080/swagger         |
 | API health           | http://localhost:8080/health/ready    |
 | Worker health        | http://localhost:8081/health/ready    |
@@ -130,6 +129,12 @@ dotnet run --project src/Crawler.Worker
 cd web && npm install && npm run dev
 ```
 
+From the command line (or open http://localhost:8080/swagger):
+
+```bash
+curl -X POST http://localhost:8080/api/jobs -H "Content-Type: application/json" -d '{"url":"https://books.toscrape.com/","maxDepth":1}'
+```
+
 Run the tests (Docker must be running for Testcontainers):
 
 ```bash
@@ -138,7 +143,7 @@ dotnet test
 
 ## API
 
-All routes live under `/api`. Errors use RFC 7807 `ProblemDetails`.
+All routes live under `/api`, and Swagger UI is at `/swagger`. Errors use RFC 7807 `ProblemDetails`: validation failures are `400` with per-field `errors`, an unknown job is `404`, and canceling a finished job is `409`. Every problem includes a `correlationId`. Responses echo `X-Correlation-Id`: send one to tie your request to the API's logs, or the API generates one. Enums are serialized as strings. Code: [`JobEndpoints.cs`](src/Crawler.Api/Endpoints/JobEndpoints.cs).
 
 | Method | Route                          | Description                                                     |
 |--------|--------------------------------|-----------------------------------------------------------------|
@@ -154,7 +159,21 @@ Validation for `POST /api/jobs`:
 - `maxDepth` defaults to `2` and must be between `0` and `5`.
 - `maxPages` is a server-side setting (default `200`, configurable through `Crawler__MaxPagesPerJob`).
 
-The job summary includes `pagesDiscovered`, `pagesCompleted` and `pagesFailed`, which drive the progress bar. Progress is `completed / discovered`. This is honest about the fact that the total is unknown up front.
+`GET /api/jobs/{jobId}` returns:
+
+```json
+{
+  "jobId": "97ff2bea-…", "url": "https://books.toscrape.com/", "status": "Running",
+  "maxDepth": 1, "maxPages": 200,
+  "createdAt": "2026-10-07T15:43:29.94Z", "startedAt": "2026-10-07T15:43:30.12Z", "completedAt": null,
+  "failureReason": null,
+  "progress": { "discovered": 74, "completed": 40, "failed": 1, "pending": 33, "percent": 55.4 }
+}
+```
+
+`progress` drives the progress bar. `percent` is finished ÷ discovered. The total isn't known up front and grows as links are found, so the percentage can move backwards. That's honest rather than a fake estimate. The tree endpoint works while a job is running and returns the partial tree.
+
+Tree response: `{ "jobId", "status", "root": node }`. Each node has this shape:
 
 Tree node shape:
 
@@ -399,5 +418,9 @@ This is a time-boxed (~4h) assignment. The order follows the rubric weights and 
 - `www.` and bare domains are treated as different hosts by design. Subdomains are external.
 - The tree shows one parent per page (the first discoverer). Other inbound links exist only in `page_links`.
 - The job completes when there are no pending pages. If a worker dies mid-page, the page waits for its 2-minute lease to expire and for redelivery, which delays completion.
-- Migrations run on API startup. This is not suitable for multi-instance production deploys.
+- Migrations run when the API and worker start. This is not suitable for multi-instance production deploys.
 - Default credentials in `docker-compose.yml` are for local use only.
+- De-duplication is by normalized URL, not content. `/` and `/index.html`, or a page and its `<link rel="canonical">`, count as different pages. On books.toscrape.com this crawls the home page twice.
+- A redirect's target URL isn't recorded as a page of its own. If another page links directly to that target, it's fetched again.
+- Canceling stops new work, but pages that were queued stay `Pending` in the tree. In-flight pages finish.
+- A dead-lettered page is marked `Failed` by the worker. If the database is also down at that moment, the page stays `Processing` and its job never completes. A reaper for expired leases would fix this.
