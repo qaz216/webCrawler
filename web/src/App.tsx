@@ -1,4 +1,4 @@
-import { History, Monitor, Moon, Radar, Sun, SquarePlus } from "lucide-react";
+import { History, Monitor, Moon, Radar, ScanSearch, Sun } from "lucide-react";
 import { Link, NavLink, Route, Routes } from "react-router";
 import { EmptyState } from "./components/Feedback";
 import { useTheme, type ThemePreference } from "./lib/theme";
@@ -16,7 +16,7 @@ export function App() {
             Web Crawler
           </Link>
           <nav className="nav" aria-label="Main">
-            <NavLink to="/" end><SquarePlus size={16} aria-hidden="true" /> New crawl</NavLink>
+            <NavLink to="/" end><ScanSearch size={16} aria-hidden="true" /> New crawl</NavLink>
             <NavLink to="/history"><History size={16} aria-hidden="true" /> History</NavLink>
           </nav>
           <ThemeToggle />
