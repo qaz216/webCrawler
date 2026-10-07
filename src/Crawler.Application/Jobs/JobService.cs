@@ -20,9 +20,9 @@ public sealed class JobService(ICrawlStore store, IOptions<CrawlerOptions> optio
         var settings = options.Value;
         var errors = new Dictionary<string, string[]>();
 
-        var normalizedUrl = UrlNormalizer.Normalize(url);
+        var normalizedUrl = UrlNormalizer.NormalizeUserInput(url);
         if (normalizedUrl is null)
-            errors["url"] = ["Must be an absolute http:// or https:// URL."];
+            errors["url"] = ["Enter a website address, like example.com or https://example.com/page."];
 
         var depth = maxDepth ?? settings.DefaultMaxDepth;
         if (depth < 0 || depth > settings.MaxAllowedDepth)

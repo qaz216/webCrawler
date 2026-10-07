@@ -74,6 +74,27 @@ public class UrlNormalizerTests
     public void Normalizes_absolute_job_urls(string? url, string? expected) =>
         Assert.Equal(expected, UrlNormalizer.Normalize(url));
 
+    [Theory]
+    // bare hosts get https:// (like a browser address bar)
+    [InlineData("google.com", "https://google.com/")]
+    [InlineData("  Example.COM/Docs?x=1#top ", "https://example.com/Docs?x=1")]
+    [InlineData("www.example.com", "https://www.example.com/")]
+    [InlineData("example.com:8443/admin", "https://example.com:8443/admin")]
+    [InlineData("localhost:3000", "https://localhost:3000/")]
+    // an explicit scheme is kept
+    [InlineData("http://example.com", "http://example.com/")]
+    [InlineData("HTTPS://example.com/a", "https://example.com/a")]
+    // still rejected: other schemes, relative paths, junk
+    [InlineData("mailto:someone@example.com", null)]
+    [InlineData("javascript:alert(1)", null)]
+    [InlineData("ftp://example.com/file", null)]
+    [InlineData("/relative/path", null)]
+    [InlineData("not a url", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public void Normalizes_what_people_type_as_a_start_url(string? input, string? expected) =>
+        Assert.Equal(expected, UrlNormalizer.NormalizeUserInput(input));
+
     [Fact]
     public void Equivalent_spellings_normalize_to_the_same_key()
     {

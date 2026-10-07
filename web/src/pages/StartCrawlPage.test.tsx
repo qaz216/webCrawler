@@ -44,13 +44,14 @@ describe("StartCrawlPage", () => {
   });
 
   it("shows the API's validation errors next to the fields", async () => {
-    mockFetch(400, { title: "One or more validation errors occurred.", errors: { url: ["Must be an absolute http:// or https:// URL."] } });
+    const message = "Enter a website address, like example.com or https://example.com/page.";
+    mockFetch(400, { title: "One or more validation errors occurred.", errors: { url: [message] } });
     renderPage();
 
     fireEvent.change(screen.getByLabelText("Website URL"), { target: { value: "ftp://nope" } });
     fireEvent.click(screen.getByRole("button", { name: "Start crawl" }));
 
-    expect(await screen.findByText("Must be an absolute http:// or https:// URL.")).toBeInTheDocument();
+    expect(await screen.findByText(message)).toBeInTheDocument();
     expect(screen.getByLabelText("Website URL")).toHaveAttribute("aria-invalid", "true");
   });
 

@@ -34,6 +34,19 @@ public sealed class JobsApiTests(PostgresFixture db) : IDisposable
     }
 
     [Fact]
+    public async Task Bare_domain_is_accepted_as_https()
+    {
+        var client = _factory.CreateClient();
+
+        var created = await client.PostAsJsonAsync("/api/jobs", new { url = "site.test" });
+
+        Assert.Equal(HttpStatusCode.Accepted, created.StatusCode);
+        var jobId = (await created.Content.ReadFromJsonAsync<JsonObject>())!["jobId"]!.GetValue<Guid>();
+        var job = await client.GetFromJsonAsync<JsonObject>($"/api/jobs/{jobId}");
+        Assert.Equal("https://site.test/", (string?)job!["url"]);
+    }
+
+    [Fact]
     public async Task Max_depth_defaults_to_two()
     {
         var client = _factory.CreateClient();

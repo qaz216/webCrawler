@@ -36,7 +36,7 @@ export function StartCrawlPage() {
         <div className="field">
           <label htmlFor="url">Website URL</label>
           <input id="url" name="url" type="text" inputMode="url" autoComplete="url" autoFocus required
-            placeholder="https://example.com/" value={url} onChange={(e) => setUrl(e.target.value)}
+            placeholder="example.com or https://example.com/page" value={url} onChange={(e) => setUrl(e.target.value)}
             aria-invalid={fieldErrors.url ? true : undefined}
             aria-describedby={fieldErrors.url ? "url-error" : undefined} />
           {fieldErrors.url && <p id="url-error" className="field-error">{fieldErrors.url.join(" ")}</p>}

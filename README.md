@@ -163,7 +163,7 @@ All routes live under `/api`, and Swagger UI is at `/swagger`. Errors use RFC 78
 | GET    | `/health/live`, `/health/ready`| Liveness and readiness (DB + broker)                             |
 
 Validation for `POST /api/jobs`:
-- `url` must be an absolute `http`/`https` URL.
+- `url` must be an `http`/`https` URL. As in a browser's address bar, a bare host such as `google.com` or `example.com:8443/docs` gets `https://` added. Input that names another scheme (`mailto:`, `ftp://`) or is a relative path is rejected.
 - `maxDepth` defaults to `2` and must be between `0` and `5`.
 - `maxPages` is a server-side setting (default `200`, configurable through `Crawler__MaxPagesPerJob`).
 

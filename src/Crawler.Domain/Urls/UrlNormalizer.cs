@@ -14,6 +14,37 @@ public static class UrlNormalizer
     private const UriComponents CanonicalComponents =
         UriComponents.SchemeAndServer | UriComponents.PathAndQuery;
 
+    /// <summary>
+    /// Normalizes what a person typed as a start URL. Like a browser address bar, a bare host
+    /// ("google.com", "example.com:8443/docs") gets <c>https://</c> prepended. Anything that already
+    /// names a scheme (mailto:, ftp://) or starts with "/" is left alone, so it is still rejected.
+    /// </summary>
+    public static string? NormalizeUserInput(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return null;
+
+        var trimmed = input.Trim();
+        return Normalize(HasScheme(trimmed) || trimmed.StartsWith('/') ? trimmed : "https://" + trimmed);
+    }
+
+    /// <summary>
+    /// True for "https://x", "mailto:x", "javascript:x"; false for "host:8080/path", where the text
+    /// before the colon is a host and the digits after it are a port.
+    /// </summary>
+    private static bool HasScheme(string value)
+    {
+        if (value.Contains("://", StringComparison.Ordinal))
+            return true;
+
+        var colon = value.IndexOf(':');
+        if (colon <= 0 || colon == value.Length - 1 || char.IsAsciiDigit(value[colon + 1]))
+            return false;
+
+        return char.IsAsciiLetter(value[0])
+            && value[..colon].All(c => char.IsAsciiLetterOrDigit(c) || c is '+' or '-' or '.');
+    }
+
     /// <summary>Normalizes an absolute URL, e.g. the URL a job was submitted with.</summary>
     public static string? Normalize(string? absoluteUrl)
     {
