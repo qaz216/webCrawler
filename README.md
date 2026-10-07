@@ -14,13 +14,14 @@ A job-based web crawler made of event-driven microservices. A user submits a URL
 2. [Architecture](#architecture)
 3. [Building From Scratch](#building-from-scratch)
 4. [Application Endpoints](#application-endpoints)
-5. [API](#api)
-6. [Crawling rules and assumptions](#crawling-rules-and-assumptions)
-7. [Messaging](#messaging) (schema, idempotency, retries, DLQ)
-8. [Data model and performance](#data-model-and-performance)
-9. [Frontend](#frontend)
-10. [Observability](#observability)
-11. [Testing](#testing)
+5. [CI pipeline (GitHub Actions): build + test](#ci-pipeline-github-actions-build--test)
+6. [API](#api)
+7. [Crawling rules and assumptions](#crawling-rules-and-assumptions)
+8. [Messaging](#messaging) (schema, idempotency, retries, DLQ)
+9. [Data model and performance](#data-model-and-performance)
+10. [Frontend](#frontend)
+11. [Observability](#observability)
+12. [Testing](#testing)
 
 ---
 
@@ -82,6 +83,23 @@ docker compose up -d --build
 | Worker health        | http://localhost:8081/health/ready    |
 | RabbitMQ management  | http://localhost:15672 (guest/guest)  |
 | PostgreSQL           | localhost:5432 (crawler/crawler)      |
+
+## CI pipeline (GitHub Actions): build + test
+
+Every push to `main`, every pull request, and a manual **Run workflow** click (Actions tab) runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml). GitHub starts three fresh Ubuntu machines and runs three jobs **in parallel**. The commit gets a ✅ only if all three pass. The badge at the top of this README shows the result of the latest run on `main`.
+
+| Job | Steps | Fails when |
+|---|---|---|
+| **Backend (.NET build + tests)** | 1. Check out the code.<br>2. Install the .NET 8 SDK.<br>3. Restore NuGet packages.<br>4. `dotnet build -c Release`.<br>5. `dotnet test`, running all unit and integration tests. The integration tests start real **PostgreSQL** and **RabbitMQ** containers with Testcontainers; Docker is preinstalled on the runner.<br>6. Upload the test results (`.trx`) as a downloadable artifact. | The C# doesn't compile, any compiler **warning** appears (`TreatWarningsAsErrors`), or any test fails |
+| **Frontend (type check, tests, build)** | 1. Check out the code.<br>2. Install Node 22.<br>3. `npm ci`.<br>4. `npm run typecheck`.<br>5. `npm test` (Vitest + Testing Library).<br>6. `npm run build`. | A TypeScript error, a failing test, or the production build breaks |
+| **Docker images + deploy config** | 1. Build the **api**, **worker** and **web** images exactly as a deploy does.<br>2. Validate the production Compose overlay in both login modes.<br>3. Validate both Caddy configs.<br>4. Syntax-check the AWS setup scripts. | A Dockerfile or a deploy configuration is broken, so the problem shows up here instead of on the server |
+
+Details:
+- **Speed:** NuGet and npm downloads are cached between runs, so a typical run takes about 2 minutes.
+- **One run per branch:** a newer push to the same branch cancels a run that's still in progress.
+- **Least privilege:** the workflow only has `contents: read` permission, so it can't change the repository.
+- **Debugging a failure:** open the run under the **Actions** tab to see which job and step failed, with full logs. Download `dotnet-test-results` to inspect individual test failures.
+- **Build + test only:** CI never deploys. Updating the AWS demo is a separate, manual step.
 
 ### Solution layout
 
