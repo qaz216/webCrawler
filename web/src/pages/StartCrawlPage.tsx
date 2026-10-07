@@ -31,9 +31,13 @@ export function StartCrawlPage() {
       <div className="hero-copy">
         <p className="hero-kicker"><Zap size={14} aria-hidden="true" /> Asynchronous, event-driven crawling</p>
         <h1 className="hero-title">Map any website. <span className="gradient-text">See where its links lead.</span></h1>
-        <p className="hero-subtitle">
-          Enter a URL and watch the crawl unfold live. Every page gets a <strong>Domain Link Ratio</strong>: the
-          share of its links that stay on the starting domain.
+        <p className="hero-byline">
+          <span className="byline-product">Alteva Web Crawler</span>
+          <span className="byline-divider" aria-hidden="true" />
+          <span className="byline-author">
+            <span className="byline-avatar" aria-hidden="true">AG</span>
+            <span><span className="byline-label">Presented by</span> <strong>Aryeh Golob</strong></span>
+          </span>
         </p>
       </div>
 
