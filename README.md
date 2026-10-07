@@ -45,6 +45,35 @@ A job-based web crawler made of event-driven microservices. A user submits a URL
 
 A PNG version for slides or documents is at [`docs/architecture.png`](docs/architecture.png).
 
+## Building From Scratch
+
+From a fresh clone to a running application. You need git and Docker with Compose v2; no .NET or Node install is required.
+
+```bash
+# clone web crawler repository
+git clone https://github.com/qaz216/webCrawler.git
+
+# go into the cloned repository
+cd webCrawler/
+
+# stop this project's containers (if any) and delete its network and data volumes
+docker compose down -v --remove-orphans
+
+# remove ALL unused Docker images, containers, networks and volumes on this machine (not just this project)
+docker system prune -a --volumes -f
+
+# clear the Docker build cache so every image is rebuilt from nothing
+docker builder prune -a -f
+
+# confirm Docker is empty: images, containers, volumes and build cache should all show 0
+docker system df
+
+# build the api, worker and web images and start the whole stack in the background
+docker compose up -d --build
+```
+
+The first build takes a few minutes, because it downloads the base images and builds everything. Then open http://localhost:3000. Service URLs and how to check the stack are under [Running locally](#running-locally).
+
 ### Solution layout
 
 ```
@@ -78,35 +107,6 @@ The dependency direction is `Api/Worker → Infrastructure → Application → D
 - **Transactional outbox.** Page results, edges, newly claimed child pages and the outgoing child tasks are written in **one DB transaction**. A dispatcher publishes the outbox rows to RabbitMQ afterwards. This closes the "committed to the DB but crashed before publishing" gap that would silently lose parts of the tree.
 - **The DB is the source of truth for de-duplication**, enforced with unique constraints rather than in-memory sets. Multiple worker instances and redeliveries are therefore safe.
 - **Dapper and hand-written SQL instead of EF Core.** The correctness-critical writes are `ON CONFLICT DO NOTHING`, `UPDATE … RETURNING`, `INSERT … SELECT … LIMIT` and `FOR UPDATE`. In SQL they're explicit and reviewable, whereas EF would hide them or need raw SQL anyway. Migrations are numbered `.sql` files embedded in the Infrastructure assembly and applied by a ~50-line migrator.
-
-## Building From Scratch
-
-From a fresh clone to a running application. You need git and Docker with Compose v2; no .NET or Node install is required.
-
-```bash
-# clone web crawler repository
-git clone https://github.com/qaz216/webCrawler.git
-
-# go into the cloned repository
-cd webCrawler/
-
-# stop this project's containers (if any) and delete its network and data volumes
-docker compose down -v --remove-orphans
-
-# remove ALL unused Docker images, containers, networks and volumes on this machine (not just this project)
-docker system prune -a --volumes -f
-
-# clear the Docker build cache so every image is rebuilt from nothing
-docker builder prune -a -f
-
-# confirm Docker is empty: images, containers, volumes and build cache should all show 0
-docker system df
-
-# build the api, worker and web images and start the whole stack in the background
-docker compose up -d --build
-```
-
-The first build takes a few minutes, because it downloads the base images and builds everything. Then open http://localhost:3000. Service URLs and how to check the stack are under [Running locally](#running-locally).
 
 ## Running locally
 
