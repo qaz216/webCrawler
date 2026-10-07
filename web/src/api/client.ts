@@ -4,6 +4,7 @@ import type {
   JobListItem,
   JobTree,
   PagedResult,
+  PageLinks,
   ProblemDetails,
 } from "./types";
 
@@ -69,6 +70,9 @@ export const api = {
   getJob: (jobId: string) => request<JobDetails>(`/api/jobs/${encodeURIComponent(jobId)}`),
 
   getTree: (jobId: string) => request<JobTree>(`/api/jobs/${encodeURIComponent(jobId)}/tree`),
+
+  getPageLinks: (jobId: string, pageId: string) =>
+    request<PageLinks>(`/api/jobs/${encodeURIComponent(jobId)}/pages/${encodeURIComponent(pageId)}`),
 
   listJobs: (page: number, pageSize: number) =>
     request<PagedResult<JobListItem>>(`/api/jobs?page=${page}&pageSize=${pageSize}`),

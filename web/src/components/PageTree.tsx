@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
+import { Link } from "react-router";
 import type { PageTreeNode } from "../api/types";
 import { flatten } from "../lib/insights";
 import { displayUrl } from "../lib/format";
@@ -8,6 +9,8 @@ import { RatioMeter } from "./RatioMeter";
 import { StatusBadge } from "./StatusBadge";
 
 interface PageTreeProps {
+  /** The crawl job, for links to each page's detail view. */
+  jobId: string;
   root: PageTreeNode;
   /** Levels expanded initially (root = depth 0). */
   initialDepth?: number;
@@ -20,7 +23,7 @@ interface PageTreeProps {
  * link count; duplicates link to their original, expanding the tree to reveal it. Pages that
  * appear while the crawl runs are briefly highlighted.
  */
-export function PageTree({ root, initialDepth = 1, focus }: PageTreeProps) {
+export function PageTree({ jobId, root, initialDepth = 1, focus }: PageTreeProps) {
   // Expansion = a default by depth (top level open, the rest closed) plus the user's explicit choices.
   // Keeping only the overrides means pages that appear later (while the crawl runs, or when the
   // tree first loads before the start page has children) still get the default.
@@ -78,7 +81,7 @@ export function PageTree({ root, initialDepth = 1, focus }: PageTreeProps) {
       </div>
 
       <ul className="tree-list" role="tree" aria-label="Crawled pages">
-        <TreeItem node={root} rootUrl={root.url} isExpanded={isExpanded} highlighted={highlighted}
+        <TreeItem jobId={jobId} node={root} rootUrl={root.url} isExpanded={isExpanded} highlighted={highlighted}
           fresh={fresh} onToggle={toggle} onReveal={reveal} />
       </ul>
     </div>
@@ -104,6 +107,7 @@ function useFreshIds(root: PageTreeNode): ReadonlySet<string> {
 }
 
 interface TreeItemProps {
+  jobId: string;
   node: PageTreeNode;
   rootUrl: string;
   isExpanded: (node: PageTreeNode) => boolean;
@@ -113,7 +117,7 @@ interface TreeItemProps {
   onReveal: (pageId: string) => void;
 }
 
-function TreeItem({ node, rootUrl, isExpanded: isNodeExpanded, highlighted, fresh, onToggle, onReveal }: TreeItemProps) {
+function TreeItem({ jobId, node, rootUrl, isExpanded: isNodeExpanded, highlighted, fresh, onToggle, onReveal }: TreeItemProps) {
   const hasChildren = node.children.length > 0;
   const isExpanded = isNodeExpanded(node);
   const isHighlighted = highlighted === node.pageId;
@@ -148,16 +152,23 @@ function TreeItem({ node, rootUrl, isExpanded: isNodeExpanded, highlighted, fres
           <span className="status-cell"><StatusBadge status={node.status} /></span>
           <span className="http-code" title={node.httpStatus === null ? undefined : "HTTP status"}>{node.httpStatus ?? ""}</span>
           <RatioMeter ratio={node.domainLinkRatio} />
-          <span className="link-count" title="Distinct outgoing links">
-            {node.outgoingLinkCount === null ? "" : `${node.outgoingLinkCount} links`}
-          </span>
+          {node.outgoingLinkCount ? (
+            <Link to={`/jobs/${jobId}/pages/${node.pageId}`} className="link-count link-count-action"
+              title="See this page's in-domain and outbound links">
+              {node.outgoingLinkCount === 1 ? "1 link" : `${node.outgoingLinkCount} links`}
+            </Link>
+          ) : (
+            <span className="link-count" title="Distinct outgoing links">
+              {node.outgoingLinkCount === null ? "" : "0 links"}
+            </span>
+          )}
         </div>
       </div>
 
       {hasChildren && isExpanded && (
         <ul role="group" className="tree-list">
           {node.children.map((child) => (
-            <TreeItem key={child.pageId} node={child} rootUrl={rootUrl} isExpanded={isNodeExpanded}
+            <TreeItem key={child.pageId} jobId={jobId} node={child} rootUrl={rootUrl} isExpanded={isNodeExpanded}
               highlighted={highlighted} fresh={fresh} onToggle={onToggle} onReveal={onReveal} />
           ))}
         </ul>

@@ -157,6 +157,37 @@ public sealed class JobsApiTests(PostgresFixture db) : IDisposable
     }
 
     [Fact]
+    public async Task Page_links_are_split_into_in_domain_and_outbound()
+    {
+        var client = _factory.CreateClient();
+        var created = await client.PostAsJsonAsync("/api/jobs", new { url = "https://site.test/" });
+        var jobId = (await created.Content.ReadFromJsonAsync<JsonObject>())!["jobId"]!.GetValue<Guid>();
+        await new CrawlHarness(db.DataSource).RunToCompletionAsync(jobId);
+
+        var tree = await client.GetFromJsonAsync<JsonObject>($"/api/jobs/{jobId}/tree");
+        var about = tree!["root"]!["children"]!.AsArray().Single(c => (string?)c!["url"] == "https://site.test/about.html")!;
+        var page = await client.GetFromJsonAsync<JsonObject>($"/api/jobs/{jobId}/pages/{about["pageId"]}");
+
+        Assert.Equal("https://site.test/about.html", (string?)page!["url"]);
+        Assert.Equal("https://site.test/", (string?)page["parentUrl"]);
+        Assert.Equal("site.test", (string?)page["startingDomain"]);
+        Assert.Equal(0.75, (double?)page["domainLinkRatio"]);
+
+        // about.html links: / (crawled), team.html (crawled), /index.html (duplicate) — and one external.
+        var internalLinks = page["internalLinks"]!.AsArray();
+        Assert.Equal(["https://site.test/", "https://site.test/index.html", "https://site.test/team.html"],
+            internalLinks.Select(l => (string?)l!["url"]));
+        Assert.All(internalLinks, l => Assert.NotNull(l!["pageId"]));
+        Assert.Equal("Duplicate", (string?)internalLinks.Single(l => (string?)l!["url"] == "https://site.test/index.html")!["status"]);
+
+        var external = Assert.Single(page["externalLinks"]!.AsArray())!;
+        Assert.Equal("https://external.test/about", (string?)external["url"]);
+        Assert.Equal("external.test", (string?)external["host"]);
+
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/jobs/{jobId}/pages/{Guid.NewGuid()}")).StatusCode);
+    }
+
+    [Fact]
     public async Task History_ratio_is_null_until_a_page_has_been_crawled()
     {
         var client = _factory.CreateClient();

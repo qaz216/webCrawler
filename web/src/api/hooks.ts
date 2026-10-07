@@ -41,6 +41,15 @@ export function useJobTree(jobId: string, status: JobStatus | undefined) {
   });
 }
 
+/** A page's outgoing links. Links are written once, when the page is crawled, so no polling is needed. */
+export function usePageLinks(jobId: string, pageId: string) {
+  return useQuery({
+    queryKey: ["job", jobId, "page", pageId] as const,
+    queryFn: () => api.getPageLinks(jobId, pageId),
+    retry: retryUnlessClientError,
+  });
+}
+
 export function useJobs(page: number, pageSize: number) {
   return useQuery({
     queryKey: keys.jobs(page, pageSize),

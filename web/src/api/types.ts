@@ -72,6 +72,35 @@ export interface JobTree {
   root: PageTreeNode | null;
 }
 
+export interface InternalLink {
+  url: string;
+  /** The target's page in this job; null when it wasn't discovered (beyond the depth or page limit). */
+  pageId: string | null;
+  status: PageStatus | null;
+  domainLinkRatio: number | null;
+  outgoingLinkCount: number | null;
+}
+
+export interface ExternalLink {
+  url: string;
+  host: string;
+}
+
+export interface PageLinks {
+  jobId: string;
+  pageId: string;
+  url: string;
+  status: PageStatus;
+  httpStatus: number | null;
+  depth: number;
+  domainLinkRatio: number | null;
+  error: string | null;
+  parentUrl: string | null;
+  startingDomain: string;
+  internalLinks: InternalLink[];
+  externalLinks: ExternalLink[];
+}
+
 export interface CreateJobRequest {
   url: string;
   maxDepth?: number;

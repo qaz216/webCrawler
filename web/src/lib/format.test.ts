@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayUrl, formatDuration, formatRatio } from "./format";
+import { displayUrl, formatDuration, formatRatio, shortUrl } from "./format";
 
 describe("formatRatio", () => {
   it.each([
@@ -31,6 +31,17 @@ describe("formatDuration", () => {
 
   it("is a dash before the job has started", () => {
     expect(formatDuration(null, null)).toBe("—");
+  });
+});
+
+describe("shortUrl", () => {
+  it("shows only the path on the same host", () => {
+    expect(shortUrl("https://www.site.test/about?x=1", "https://www.site.test/")).toBe("/about?x=1");
+  });
+
+  it("drops https:// for other hosts but keeps plain http visible", () => {
+    expect(shortUrl("https://www.site.test/about", "https://site.test/")).toBe("www.site.test/about");
+    expect(shortUrl("http://other.test/a", "https://site.test/")).toBe("http://other.test/a");
   });
 });
 

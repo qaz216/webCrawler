@@ -92,6 +92,71 @@ public sealed class CrawlQueries(NpgsqlDataSource dataSource) : ICrawlQueries
         return new PagedResult<JobListItem>(items, page, pageSize, total);
     }
 
+    public async Task<PageLinks?> GetPageLinksAsync(Guid jobId, Guid pageId, CancellationToken cancellationToken)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+
+        using var results = await connection.QueryMultipleAsync(new CommandDefinition("""
+            SELECT p.id, p.url, p.status, p.http_status, p.depth, p.domain_link_ratio, p.error,
+                   parent.url AS parent_url, j.root_host
+              FROM pages p
+              JOIN crawl_jobs j ON j.id = p.job_id
+              LEFT JOIN pages parent ON parent.id = p.parent_page_id
+             WHERE p.id = @pageId AND p.job_id = @jobId;
+
+            -- Targets are matched by URL (ux_pages_job_url), so a link shows its page even if that page
+            -- was claimed by another parent after this one finished.
+            SELECT l.to_url, l.is_internal, t.id AS target_page_id, t.status AS target_status,
+                   t.domain_link_ratio AS target_ratio, t.outgoing_link_count AS target_link_count
+              FROM page_links l
+              LEFT JOIN pages t ON t.job_id = l.job_id AND t.url = l.to_url
+             WHERE l.from_page_id = @pageId
+             ORDER BY l.to_url;
+            """,
+            new { jobId, pageId }, cancellationToken: cancellationToken));
+
+        var page = await results.ReadSingleOrDefaultAsync<PageDetailRow>();
+        if (page is null)
+            return null;
+
+        var links = (await results.ReadAsync<LinkRow>()).ToList();
+
+        return new PageLinks(
+            jobId, page.Id, page.Url, Enum.Parse<PageStatus>(page.Status), page.HttpStatus, page.Depth,
+            (double?)page.DomainLinkRatio, page.Error, page.ParentUrl, RootDomain.Of(page.RootHost),
+            links.Where(l => l.IsInternal)
+                .Select(l => new InternalLink(l.ToUrl, l.TargetPageId,
+                    l.TargetStatus is null ? null : Enum.Parse<PageStatus>(l.TargetStatus),
+                    (double?)l.TargetRatio, l.TargetLinkCount))
+                .ToList(),
+            links.Where(l => !l.IsInternal)
+                .Select(l => new ExternalLink(l.ToUrl, new Uri(l.ToUrl).Host))
+                .ToList());
+    }
+
+    private sealed class PageDetailRow
+    {
+        public Guid Id { get; set; }
+        public string Url { get; set; } = "";
+        public string Status { get; set; } = "";
+        public int? HttpStatus { get; set; }
+        public int Depth { get; set; }
+        public decimal? DomainLinkRatio { get; set; }
+        public string? Error { get; set; }
+        public string? ParentUrl { get; set; }
+        public string RootHost { get; set; } = "";
+    }
+
+    private sealed class LinkRow
+    {
+        public string ToUrl { get; set; } = "";
+        public bool IsInternal { get; set; }
+        public Guid? TargetPageId { get; set; }
+        public string? TargetStatus { get; set; }
+        public decimal? TargetRatio { get; set; }
+        public int? TargetLinkCount { get; set; }
+    }
+
     private sealed class JobRow
     {
         public Guid Id { get; set; }

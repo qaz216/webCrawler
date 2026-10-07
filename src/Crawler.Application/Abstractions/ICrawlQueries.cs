@@ -12,7 +12,29 @@ public interface ICrawlQueries
 
     /// <summary>Most recent first.</summary>
     Task<PagedResult<JobListItem>> ListJobsAsync(int page, int pageSize, CancellationToken cancellationToken);
+
+    /// <summary>One page with its outgoing links, split into in-domain and outbound; null if not in the job.</summary>
+    Task<PageLinks?> GetPageLinksAsync(Guid jobId, Guid pageId, CancellationToken cancellationToken);
 }
+
+public sealed record PageLinks(
+    Guid JobId,
+    Guid PageId,
+    string Url,
+    PageStatus Status,
+    int? HttpStatus,
+    int Depth,
+    double? DomainLinkRatio,
+    string? Error,
+    string? ParentUrl,
+    string StartingDomain,
+    IReadOnlyList<InternalLink> InternalLinks,
+    IReadOnlyList<ExternalLink> ExternalLinks);
+
+/// <param name="PageId">The target's page in this job, if it was discovered (null: beyond the depth or page limit).</param>
+public sealed record InternalLink(string Url, Guid? PageId, PageStatus? Status, double? DomainLinkRatio, int? OutgoingLinkCount);
+
+public sealed record ExternalLink(string Url, string Host);
 
 /// <param name="StartingDomain">
 /// Root domain whose links count as internal (subdomains included): the job URL's, or — if the start

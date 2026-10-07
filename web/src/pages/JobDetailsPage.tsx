@@ -185,7 +185,7 @@ function PagesPanel({ job, tree, isPending, error, onRetry, view, onViewChange, 
       ) : !root ? (
         <EmptyState title="No pages yet">The crawl hasn't started yet.</EmptyState>
       ) : view === "tree" ? (
-        <PageTree root={root} focus={focus} />
+        <PageTree jobId={job.jobId} root={root} focus={focus} />
       ) : (
         <Suspense fallback={<Loading label="Loading graph…" />}>
           <SiteGraph root={root} live={running} onSelectPage={onSelectPage} />

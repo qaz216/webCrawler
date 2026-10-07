@@ -48,6 +48,12 @@ public static class JobEndpoints
             .Produces<JobTreeResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        jobs.MapGet("/{jobId:guid}/pages/{pageId:guid}", GetPageLinks)
+            .WithName("GetPageLinks")
+            .WithSummary("One crawled page with its outgoing links, split into in-domain and outbound.")
+            .Produces<PageLinks>()
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         jobs.MapPost("/{jobId:guid}/cancel", CancelJob)
             .WithName("CancelJob")
             .WithSummary("Cancel a Pending or Running job.")
@@ -93,6 +99,13 @@ public static class JobEndpoints
         var pages = await queries.GetPagesAsync(jobId, cancellationToken);
         return Results.Ok(new JobTreeResponse(jobId, job.Status.ToString(), PageTreeBuilder.Build(pages)));
     }
+
+    private static async Task<IResult> GetPageLinks(
+        Guid jobId, Guid pageId, ICrawlQueries queries, CancellationToken cancellationToken) =>
+        await queries.GetPageLinksAsync(jobId, pageId, cancellationToken) is { } page
+            ? Results.Ok(page)
+            : Results.Problem(title: "Page not found", detail: $"No page {pageId} in crawl job {jobId}.",
+                statusCode: StatusCodes.Status404NotFound);
 
     private static async Task<IResult> CancelJob(
         Guid jobId, JobService jobs, ICrawlQueries queries, CancellationToken cancellationToken)

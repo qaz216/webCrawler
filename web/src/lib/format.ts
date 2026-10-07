@@ -35,6 +35,20 @@ export function formatDuration(
 }
 
 /**
+ * Readable label for a link: just the path on the same host as `baseUrl` ("/about"); otherwise the
+ * URL without "https://" ("www.example.com/about"). Plain http keeps its scheme so it stays visible.
+ */
+export function shortUrl(url: string, baseUrl: string): string {
+  try {
+    const target = new URL(url);
+    if (target.host === new URL(baseUrl).host) return `${target.pathname}${target.search}`;
+    return target.protocol === "https:" ? url.slice("https://".length) : url;
+  } catch {
+    return url;
+  }
+}
+
+/**
  * Compact label for a page URL: same-host URLs show path + query ("/about?x=1"),
  * other hosts keep the full URL. The full URL is always available as a tooltip/link.
  */

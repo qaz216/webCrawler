@@ -159,6 +159,7 @@ All routes live under `/api`, and Swagger UI is at `/swagger`. Errors use RFC 78
 | GET    | `/api/jobs/{jobId}`            | Status, timestamps, failure reason, progress counters            |
 | GET    | `/api/jobs/{jobId}/tree`       | Hierarchical result (nested nodes)                               |
 | GET    | `/api/jobs?page=1&pageSize=20` | History, most recent first, paginated                            |
+| GET    | `/api/jobs/{jobId}/pages/{pageId}` | One page with its outgoing links split into `internalLinks` (with each target's page, status and ratio, matched by URL) and `externalLinks` (with host) |
 | POST   | `/api/jobs/{jobId}/cancel`     | Cancel a Pending or Running job (optional feature)              |
 | DELETE | `/api/jobs`                    | Clear history: delete all jobs with their pages, links and unsent outbox messages (one transaction) → `{ "deleted": n }`. Running jobs stop. Their tasks already on the broker are dropped by workers. |
 | GET    | `/health/live`, `/health/ready`| Liveness and readiness (DB + broker)                             |
@@ -401,6 +402,11 @@ React 19 + TypeScript + Vite, React Router, and TanStack Query for fetching, cac
   - Hover shows a page's details. Crawled URLs are HTML-escaped in tooltips because they're untrusted input. Clicking a node opens that page in the tree.
   - Positions persist across polls, so the layout doesn't jump.
 - **Ratio insights:** the job-wide average ratio and a histogram of pages by ratio band.
+- **Page links** (`/jobs/:id/pages/:pageId`, opened by clicking a page's link count in the tree):
+  - A header with the page's ratio and an in-domain/outbound split bar.
+  - **In-domain links:** each with its crawl status and ratio. Crawled targets open their own links page, so you can walk the site link by link. Targets beyond the depth or page limit say "Not crawled".
+  - **Outbound links:** grouped by external site, busiest first.
+  - A filter box searches both lists.
 - **Polish:**
   - Counters and the progress bar animate.
   - Pages that appear in the tree while a crawl runs are briefly highlighted.

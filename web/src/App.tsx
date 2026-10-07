@@ -4,6 +4,7 @@ import { EmptyState } from "./components/Feedback";
 import { useTheme } from "./lib/theme";
 import { HistoryPage } from "./pages/HistoryPage";
 import { JobDetailsPage } from "./pages/JobDetailsPage";
+import { PageLinksPage } from "./pages/PageLinksPage";
 import { StartCrawlPage } from "./pages/StartCrawlPage";
 
 export function App() {
@@ -27,6 +28,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<StartCrawlPage />} />
           <Route path="/jobs/:jobId" element={<JobDetailsPage />} />
+          <Route path="/jobs/:jobId/pages/:pageId" element={<PageLinksPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="*" element={
             <EmptyState title="Page not found"><Link to="/">Start a crawl</Link></EmptyState>

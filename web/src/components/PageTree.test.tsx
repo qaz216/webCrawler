@@ -1,11 +1,19 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
+import type { PageTreeNode } from "../api/types";
 import { sampleTree } from "../test/fixtures";
 import { PageTree } from "./PageTree";
 
+const tree = (root: PageTreeNode) => (
+  <MemoryRouter>
+    <PageTree jobId="job-1" root={root} />
+  </MemoryRouter>
+);
+
 describe("PageTree", () => {
   it("shows the root and its children, with ratio, status and link count", () => {
-    render(<PageTree root={sampleTree} />);
+    render(tree(sampleTree));
 
     const rootRow = screen.getByRole("link", { name: "/" }).closest(".tree-row") as HTMLElement;
     expect(within(rootRow).getByText("87.5%")).toBeInTheDocument();
@@ -17,8 +25,14 @@ describe("PageTree", () => {
     expect(screen.getByText("5 pages")).toBeInTheDocument();
   });
 
+  it("links each page's link count to its in-domain/outbound links page", () => {
+    render(tree(sampleTree));
+
+    expect(screen.getByRole("link", { name: "8 links" })).toHaveAttribute("href", "/jobs/job-1/pages/root");
+  });
+
   it("starts collapsed below the first level and expands on demand", () => {
-    render(<PageTree root={sampleTree} />);
+    render(tree(sampleTree));
     expect(screen.queryByRole("link", { name: "/team.html" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Expand https://site.test/about.html" }));
@@ -33,26 +47,26 @@ describe("PageTree", () => {
 
   it("expands the top level by default even when its children arrive later", () => {
     // First render: the crawl has only the start page so far.
-    const { rerender } = render(<PageTree root={{ ...sampleTree, children: [] }} />);
+    const { rerender } = render(tree({ ...sampleTree, children: [] }));
     expect(screen.queryByRole("link", { name: "/about.html" })).not.toBeInTheDocument();
 
     // Next poll: children were discovered — the top level opens, deeper levels stay closed.
-    rerender(<PageTree root={sampleTree} />);
+    rerender(tree(sampleTree));
     expect(screen.getByRole("link", { name: "/about.html" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "/team.html" })).not.toBeInTheDocument();
   });
 
   it("remembers that the user collapsed the top level", () => {
-    const { rerender } = render(<PageTree root={sampleTree} />);
+    const { rerender } = render(tree(sampleTree));
 
     fireEvent.click(screen.getByRole("button", { name: "Collapse https://site.test/" }));
-    rerender(<PageTree root={{ ...sampleTree }} />); // a later poll
+    rerender(tree({ ...sampleTree })); // a later poll
 
     expect(screen.queryByRole("link", { name: "/about.html" })).not.toBeInTheDocument();
   });
 
   it("labels duplicates and links them to their original", () => {
-    render(<PageTree root={sampleTree} />);
+    render(tree(sampleTree));
     fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
 
     const aliasRow = screen.getByRole("link", { name: "/index.html" }).closest(".tree-row") as HTMLElement;
