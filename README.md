@@ -14,14 +14,13 @@ A job-based web crawler made of event-driven microservices. A user submits a URL
 2. [Architecture](#architecture)
 3. [Building From Scratch](#building-from-scratch)
 4. [Application Endpoints](#application-endpoints)
-5. [Running locally](#running-locally)
-6. [API](#api)
-7. [Crawling rules and assumptions](#crawling-rules-and-assumptions)
-8. [Messaging](#messaging) (schema, idempotency, retries, DLQ)
-9. [Data model and performance](#data-model-and-performance)
-10. [Frontend](#frontend)
-11. [Observability](#observability)
-12. [Testing](#testing)
+5. [API](#api)
+6. [Crawling rules and assumptions](#crawling-rules-and-assumptions)
+7. [Messaging](#messaging) (schema, idempotency, retries, DLQ)
+8. [Data model and performance](#data-model-and-performance)
+9. [Frontend](#frontend)
+10. [Observability](#observability)
+11. [Testing](#testing)
 
 ---
 
@@ -117,69 +116,6 @@ The dependency direction is `Api/Worker → Infrastructure → Application → D
 - **Transactional outbox.** Page results, edges, newly claimed child pages and the outgoing child tasks are written in **one DB transaction**. A dispatcher publishes the outbox rows to RabbitMQ afterwards. This closes the "committed to the DB but crashed before publishing" gap that would silently lose parts of the tree.
 - **The DB is the source of truth for de-duplication**, enforced with unique constraints rather than in-memory sets. Multiple worker instances and redeliveries are therefore safe.
 - **Dapper and hand-written SQL instead of EF Core.** The correctness-critical writes are `ON CONFLICT DO NOTHING`, `UPDATE … RETURNING`, `INSERT … SELECT … LIMIT` and `FOR UPDATE`. In SQL they're explicit and reviewable, whereas EF would hide them or need raw SQL anyway. Migrations are numbered `.sql` files embedded in the Infrastructure assembly and applied by a ~50-line migrator.
-
-## Running locally
-
-Prerequisites: Docker Desktop (or Docker Engine + Compose v2).
-
-```bash
-docker compose up -d --build
-```
-
-| Service              | URL                                   |
-|----------------------|---------------------------------------|
-| **React UI**         | **http://localhost:3000**             |
-| Crawl API (+Swagger) | http://localhost:8080/swagger         |
-| API health           | http://localhost:8080/health/ready    |
-| Worker health        | http://localhost:8081/health/ready    |
-| RabbitMQ management  | http://localhost:15672 (guest/guest)  |
-| PostgreSQL           | localhost:5432 (crawler/crawler)      |
-
-Database migrations (the embedded `.sql` scripts) are applied automatically when the API or the worker starts, under a Postgres advisory lock so concurrent starts are safe. Each service waits and retries until the database is reachable. That's fine for local and demo use, but not for production. Docker Compose healthchecks gate start order: the API and worker wait for Postgres and RabbitMQ to be healthy.
-
-To develop without containers for the apps:
-
-```bash
-docker compose up -d postgres rabbitmq
-```
-
-```bash
-dotnet run --project src/Crawler.Api
-```
-
-```bash
-dotnet run --project src/Crawler.Worker
-```
-
-```bash
-cd web && npm install && npm run dev
-```
-
-The dev UI is at http://localhost:5173.
-
-From the command line (or open http://localhost:8080/swagger):
-
-```bash
-curl -X POST http://localhost:8080/api/jobs -H "Content-Type: application/json" -d '{"url":"https://books.toscrape.com/","maxDepth":1}'
-```
-
-Run the tests (Docker must be running for Testcontainers):
-
-```bash
-dotnet test
-```
-
-Alternatively, run them inside a Linux SDK container, as CI would. This is useful where local policy blocks freshly built test DLLs; Windows Smart App Control does this intermittently, and the error is "An Application Control policy has blocked this file":
-
-```bash
-docker run --rm -v "$PWD:/src:ro" -v /var/run/docker.sock:/var/run/docker.sock -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal mcr.microsoft.com/dotnet/sdk:8.0 sh /src/scripts/test-in-docker.sh
-```
-
-## Deploying (AWS demo)
-
-A single small EC2 instance (t3.small, about $20/month while running) runs the same Compose stack. It adds [`docker-compose.prod.yml`](docker-compose.prod.yml), in which Caddy provides automatic HTTPS (plus an optional login, off by default) and no internal ports are exposed. Paste [`deploy/aws/user-data.sh`](deploy/aws/user-data.sh) when launching the instance and it sets everything up. The step-by-step console guide is in [`deploy/aws/README.md`](deploy/aws/README.md).
-
-Because anyone could submit a URL, the worker has **SSRF protection** ([`PrivateNetworkGuard.cs`](src/Crawler.Infrastructure/Http/PrivateNetworkGuard.cs)). It resolves each host itself and refuses private, loopback and link-local addresses, including the cloud metadata service `169.254.169.254`, on every connection and redirect hop. Such pages fail at once with a clear reason and are never retried. To crawl a site on your own network, set `HttpFetch__BlockPrivateNetworks=false`.
 
 ## API
 
