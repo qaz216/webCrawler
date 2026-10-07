@@ -57,6 +57,8 @@ export interface PageTreeNode {
   outgoingLinkCount: number | null;
   duplicateOfPageId: string | null;
   duplicateOfUrl: string | null;
+  /** When the page reached its final status (null while pending/processing). */
+  finishedAt: string | null;
   children: PageTreeNode[];
 }
 

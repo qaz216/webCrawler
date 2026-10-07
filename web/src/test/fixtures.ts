@@ -18,6 +18,7 @@ export function node(
     outgoingLinkCount: 4,
     duplicateOfPageId: null,
     duplicateOfUrl: null,
+    finishedAt: null,
     children,
     ...overrides,
   };

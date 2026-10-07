@@ -38,7 +38,8 @@ public sealed class CrawlQueries(NpgsqlDataSource dataSource) : ICrawlQueries
 
         var rows = await connection.QueryAsync<PageRow>(new CommandDefinition("""
             SELECT p.id, p.parent_page_id, p.url, p.depth, p.status, p.http_status, p.error,
-                   p.domain_link_ratio, p.outgoing_link_count, p.duplicate_of_page_id, original.url AS duplicate_of_url
+                   p.domain_link_ratio, p.outgoing_link_count, p.duplicate_of_page_id, original.url AS duplicate_of_url,
+                   p.finished_at
               FROM pages p
               LEFT JOIN pages original ON original.id = p.duplicate_of_page_id
              WHERE p.job_id = @jobId
@@ -48,7 +49,7 @@ public sealed class CrawlQueries(NpgsqlDataSource dataSource) : ICrawlQueries
         return rows
             .Select(r => new PageRecord(r.Id, r.ParentPageId, r.Url, r.Depth, Enum.Parse<PageStatus>(r.Status),
                 r.HttpStatus, r.Error, (double?)r.DomainLinkRatio, r.OutgoingLinkCount,
-                r.DuplicateOfPageId, r.DuplicateOfUrl))
+                r.DuplicateOfPageId, r.DuplicateOfUrl, r.FinishedAt))
             .ToList();
     }
 
@@ -117,5 +118,6 @@ public sealed class CrawlQueries(NpgsqlDataSource dataSource) : ICrawlQueries
         public int? OutgoingLinkCount { get; set; }
         public Guid? DuplicateOfPageId { get; set; }
         public string? DuplicateOfUrl { get; set; }
+        public DateTime? FinishedAt { get; set; }
     }
 }

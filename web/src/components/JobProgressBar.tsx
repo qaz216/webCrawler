@@ -1,5 +1,6 @@
 import type { JobDetails } from "../api/types";
 import { isActive } from "../api/types";
+import { useAnimatedNumber } from "../lib/useAnimatedNumber";
 
 /**
  * Finished ÷ discovered. The total is unknown up front and grows as links are found,
@@ -8,10 +9,14 @@ import { isActive } from "../api/types";
 export function JobProgressBar({ job }: { job: JobDetails }) {
   const { progress } = job;
   const indeterminate = job.status === "Pending";
-  const finished = progress.discovered - progress.pending;
+  const percent = useAnimatedNumber(progress.percent);
 
   return (
     <div className="progress-block">
+      <div className="progress-label">
+        <span className="progress-percent">{indeterminate ? "Queued" : `${Math.round(percent)}%`}</span>
+        {isActive(job.status) && <span className="muted small">The total grows as new links are discovered</span>}
+      </div>
       <div
         className={`progress ${indeterminate ? "progress-indeterminate" : ""} ${isActive(job.status) ? "progress-active" : ""}`}
         role="progressbar"
@@ -20,28 +25,26 @@ export function JobProgressBar({ job }: { job: JobDetails }) {
         aria-valuemax={100}
         aria-valuenow={indeterminate ? undefined : progress.percent}
       >
-        <div className="progress-fill" style={{ width: indeterminate ? undefined : `${progress.percent}%` }} />
+        <div className="progress-fill" style={{ width: indeterminate ? undefined : `${percent}%` }} />
       </div>
 
       <dl className="counts">
-        <Count label="Finished" value={`${finished} / ${progress.discovered}`} />
-        <Count label="Crawled" value={progress.completed} />
+        <Count label="Discovered" value={progress.discovered} />
+        <Count label="Crawled" value={progress.completed} tone="good" />
         <Count label="Failed" value={progress.failed} tone={progress.failed > 0 ? "error" : undefined} />
-        <Count label="Duplicates" value={progress.duplicates} />
+        <Count label="Duplicates" value={progress.duplicates} tone="duplicate" />
         <Count label="Pending" value={progress.pending} />
       </dl>
-      {isActive(job.status) && (
-        <p className="muted small">The total grows as new links are discovered.</p>
-      )}
     </div>
   );
 }
 
-function Count({ label, value, tone }: { label: string; value: number | string; tone?: "error" }) {
+function Count({ label, value, tone }: { label: string; value: number; tone?: "error" | "good" | "duplicate" }) {
+  const animated = useAnimatedNumber(value, 500);
   return (
     <div className={`count ${tone ? `count-${tone}` : ""}`}>
       <dt>{label}</dt>
-      <dd>{value}</dd>
+      <dd>{Math.round(animated)}</dd>
     </div>
   );
 }

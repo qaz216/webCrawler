@@ -65,4 +65,5 @@ public sealed record PageRecord(
     double? DomainLinkRatio,
     int? OutgoingLinkCount,
     Guid? DuplicateOfPageId = null,
-    string? DuplicateOfUrl = null);
+    string? DuplicateOfUrl = null,
+    DateTime? FinishedAt = null);

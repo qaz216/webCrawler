@@ -391,6 +391,19 @@ React 19 + TypeScript + Vite, React Router, and TanStack Query for fetching, cac
   - Each page shows its path, status, HTTP code, the **Domain Link Ratio** as a percentage with a small bar, and its link count.
   - Failed and skipped pages show their reason.
   - **Duplicates** show "Same content as `/`, not crawled again". Clicking the original expands the tree to it and highlights it.
+- **Live activity feed** (Job Details sidebar): the most recently finished pages, newest first, with each page's links and ratio. While a crawl runs, entries slide in as workers report them, which makes the asynchronous pipeline visible. It's built from each page's `finishedAt`, so it also shows the last pages of a finished job.
+- **Site graph** (the Graph tab): a force-directed map of the crawl built with `react-force-graph-2d`, which is lazy-loaded so the start page doesn't download it.
+  - Nodes are coloured by Domain Link Ratio, from amber (links leave the site) to blue (links stay), and sized by link count.
+  - Dashed edges join each duplicate to its original. Particles flow along the edges while the job runs.
+  - Hover shows a page's details. Crawled URLs are HTML-escaped in tooltips because they're untrusted input. Clicking a node opens that page in the tree.
+  - Positions persist across polls, so the layout doesn't jump.
+- **Ratio insights:** the job-wide average ratio, a histogram by ratio band, and the pages sending the most links off-site. Each of those pages is clickable.
+- **Polish:**
+  - Counters and the progress bar animate.
+  - Pages that appear in the tree while a crawl runs are briefly highlighted.
+  - Light/dark/system theme toggle, saved per browser, with no flash on load.
+  - Inter font and Lucide icons.
+  - All motion respects `prefers-reduced-motion`.
 - **History** (`/history`): a paginated table (URL, status, created, duration, pages). The page number is kept in the URL (`?page=2`). Clicking a row opens Job Details. The table auto-refreshes while any listed job is still running.
 - **States:** every screen has explicit loading, error (with retry, plus the server's correlation id for log lookup) and empty states. An unknown job id gets a "Job not found" page. A failed background poll keeps the last data and shows a warning instead of blanking the page.
 - **Tests:** Vitest + Testing Library cover the formatting and tree helpers, the tree component (expand/collapse, duplicate links) and the Start Crawl form against a mocked API (success, field validation errors, API unreachable).

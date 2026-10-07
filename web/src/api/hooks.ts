@@ -4,7 +4,7 @@ import { isActive, type JobStatus } from "./types";
 
 /** Polling intervals: fast enough to feel live, slow enough to be cheap (status is a PK lookup). */
 export const JOB_POLL_MS = 1500;
-export const TREE_POLL_MS = 3000;
+export const TREE_POLL_MS = 2000;
 export const HISTORY_POLL_MS = 5000;
 
 const keys = {

@@ -14,6 +14,7 @@ public sealed record PageTreeNode(
     int? OutgoingLinkCount,
     Guid? DuplicateOfPageId,
     string? DuplicateOfUrl,
+    DateTime? FinishedAt,
     IReadOnlyList<PageTreeNode> Children);
 
 /// <summary>
@@ -47,6 +48,7 @@ public static class PageTreeBuilder
             .ToList();
 
         return new PageTreeNode(page.PageId, page.Url, page.Depth, page.Status, page.HttpStatus, page.Error,
-            page.DomainLinkRatio, page.OutgoingLinkCount, page.DuplicateOfPageId, page.DuplicateOfUrl, children);
+            page.DomainLinkRatio, page.OutgoingLinkCount, page.DuplicateOfPageId, page.DuplicateOfUrl,
+            page.FinishedAt, children);
     }
 }
