@@ -40,23 +40,9 @@ A job-based web crawler made of event-driven microservices. A user submits a URL
 
 ## Architecture
 
-```
- ┌──────────┐  HTTP   ┌──────────────────┐  publish CrawlPageTask   ┌──────────────┐
- │ React UI │ ──────▶ │ Service A        │ ───────────────────────▶ │  RabbitMQ    │
- │ (Vite)   │ ◀────── │ Crawl API        │                          │  crawl.pages │
- └──────────┘ polling │ (orchestrator)   │                          └──────┬───────┘
-                      └────────┬─────────┘                                 │ consume
-                               │ read jobs/pages/edges                     ▼
-                               │                                 ┌──────────────────┐
-                               ▼                                 │ Service B        │
-                      ┌──────────────────┐   write pages/edges   │ Crawl Worker     │
-                      │   PostgreSQL     │ ◀──────────────────── │ fetch, parse,    │
-                      │                  │   + outbox            │ compute metrics  │
-                      └──────────────────┘                       └────────┬─────────┘
-                                                                          │ publish child
-                                                                          ▼ tasks (via outbox)
-                                                                     RabbitMQ
-```
+![Web Crawler architecture: the React UI calls the Crawl API; the API stores jobs in PostgreSQL and publishes the root task to RabbitMQ via the outbox; the Crawl Worker consumes page tasks, fetches websites, writes pages, links and child tasks (via the outbox) to PostgreSQL, and child tasks are published back to RabbitMQ.](docs/architecture.svg)
+
+A PNG version for slides or documents is at [`docs/architecture.png`](docs/architecture.png).
 
 ### Solution layout
 
