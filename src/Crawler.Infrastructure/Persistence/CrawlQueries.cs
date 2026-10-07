@@ -58,10 +58,19 @@ public sealed class CrawlQueries(NpgsqlDataSource dataSource) : ICrawlQueries
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
 
         using var results = await connection.QueryMultipleAsync(new CommandDefinition("""
-            SELECT id, url, status, created_at, started_at, completed_at, pages_discovered
-              FROM crawl_jobs
-             ORDER BY created_at DESC, id DESC
-             LIMIT @pageSize OFFSET @offset;
+            -- Page through jobs first, then average the ratios of only those jobs' pages
+            -- (an index range scan on ux_pages_job_url per job).
+            SELECT j.id, j.url, j.status, j.created_at, j.started_at, j.completed_at, j.pages_discovered,
+                   r.average_domain_link_ratio
+              FROM (SELECT id, url, status, created_at, started_at, completed_at, pages_discovered
+                      FROM crawl_jobs
+                     ORDER BY created_at DESC, id DESC
+                     LIMIT @pageSize OFFSET @offset) j
+              LEFT JOIN LATERAL (
+                   SELECT avg(p.domain_link_ratio) AS average_domain_link_ratio
+                     FROM pages p
+                    WHERE p.job_id = j.id AND p.domain_link_ratio IS NOT NULL) r ON true
+             ORDER BY j.created_at DESC, j.id DESC;
 
             SELECT count(*) FROM crawl_jobs;
             """,
@@ -69,7 +78,8 @@ public sealed class CrawlQueries(NpgsqlDataSource dataSource) : ICrawlQueries
 
         var items = (await results.ReadAsync<JobListRow>())
             .Select(r => new JobListItem(r.Id, r.Url, Enum.Parse<JobStatus>(r.Status), r.CreatedAt, r.StartedAt,
-                r.CompletedAt, r.PagesDiscovered))
+                r.CompletedAt, r.PagesDiscovered,
+                r.AverageDomainLinkRatio is { } average ? (double)Math.Round(average, 4) : null))
             .ToList();
         var total = await results.ReadSingleAsync<long>();
 
@@ -103,6 +113,7 @@ public sealed class CrawlQueries(NpgsqlDataSource dataSource) : ICrawlQueries
         public DateTime? StartedAt { get; set; }
         public DateTime? CompletedAt { get; set; }
         public int PagesDiscovered { get; set; }
+        public decimal? AverageDomainLinkRatio { get; set; }
     }
 
     private sealed class PageRow

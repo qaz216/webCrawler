@@ -1,6 +1,7 @@
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { useJobs } from "../api/hooks";
 import { EmptyState, ErrorPanel, Loading } from "../components/Feedback";
+import { RatioMeter } from "../components/RatioMeter";
 import { StatusBadge } from "../components/StatusBadge";
 import { formatDateTime, formatDuration } from "../lib/format";
 
@@ -40,6 +41,9 @@ export function HistoryPage() {
                   <th scope="col">Created</th>
                   <th scope="col">Duration</th>
                   <th scope="col" className="numeric">Pages</th>
+                  <th scope="col" className="ratio-col" title="Average Domain Link Ratio of the crawled pages: the share of their links that stay on the starting domain">
+                    Avg link ratio
+                  </th>
                 </tr>
               </thead>
               <tbody className={jobs.isPlaceholderData ? "is-loading" : undefined}>
@@ -54,6 +58,9 @@ export function HistoryPage() {
                     <td>{formatDateTime(job.createdAt)}</td>
                     <td>{job.startedAt ? formatDuration(job.startedAt, job.completedAt) : "—"}</td>
                     <td className="numeric">{job.pagesDiscovered}</td>
+                    <td className="ratio-col">
+                      <RatioMeter ratio={job.averageDomainLinkRatio} label="Average Domain Link Ratio" />
+                    </td>
                   </tr>
                 ))}
               </tbody>

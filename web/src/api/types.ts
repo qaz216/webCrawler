@@ -36,6 +36,8 @@ export interface JobListItem {
   startedAt: string | null;
   completedAt: string | null;
   pagesDiscovered: number;
+  /** Mean Domain Link Ratio of the job's crawled pages; null until one has been crawled. */
+  averageDomainLinkRatio: number | null;
 }
 
 export interface PagedResult<T> {

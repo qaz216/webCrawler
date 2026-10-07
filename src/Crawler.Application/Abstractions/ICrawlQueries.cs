@@ -40,6 +40,7 @@ public sealed record JobProgress(int Discovered, int Completed, int Failed, int 
     public double Percent => Discovered == 0 ? 0 : Math.Round(100.0 * (Discovered - Pending) / Discovered, 1);
 }
 
+/// <param name="AverageDomainLinkRatio">Mean Domain Link Ratio of the job's crawled pages; null until one has been crawled.</param>
 public sealed record JobListItem(
     Guid JobId,
     string Url,
@@ -47,7 +48,8 @@ public sealed record JobListItem(
     DateTime CreatedAt,
     DateTime? StartedAt,
     DateTime? CompletedAt,
-    int PagesDiscovered);
+    int PagesDiscovered,
+    double? AverageDomainLinkRatio);
 
 public sealed record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSize, long TotalCount)
 {

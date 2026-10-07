@@ -146,6 +146,24 @@ public sealed class JobsApiTests(PostgresFixture db) : IDisposable
         var missing = root["children"]!.AsArray().Single(c => (string?)c!["url"] == "https://site.test/missing.html")!;
         Assert.Equal("Failed", (string?)missing["status"]);
         Assert.Equal(404, (int?)missing["httpStatus"]);
+
+        // History shows the job's average ratio over its 8 crawled HTML pages
+        // (/ .875, /about .75, /products/ 1, /blog .3333, /flaky 1, /team 0, /a 1, /b 0).
+        var history = await client.GetFromJsonAsync<JsonObject>("/api/jobs?pageSize=100");
+        var listed = history!["items"]!.AsArray().Single(i => i!["jobId"]!.GetValue<Guid>() == jobId)!;
+        Assert.Equal(4.9583 / 8, (double)listed["averageDomainLinkRatio"]!, precision: 4);
+    }
+
+    [Fact]
+    public async Task History_ratio_is_null_until_a_page_has_been_crawled()
+    {
+        var client = _factory.CreateClient();
+        var created = await client.PostAsJsonAsync("/api/jobs", new { url = "https://site.test/" });
+        var jobId = (await created.Content.ReadFromJsonAsync<JsonObject>())!["jobId"]!.GetValue<Guid>();
+
+        var history = await client.GetFromJsonAsync<JsonObject>("/api/jobs?pageSize=100");
+        var listed = history!["items"]!.AsArray().Single(i => i!["jobId"]!.GetValue<Guid>() == jobId)!;
+        Assert.Null(listed["averageDomainLinkRatio"]);
     }
 
     [Fact]

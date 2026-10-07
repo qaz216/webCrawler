@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import type { PageTreeNode } from "../api/types";
 import { flatten } from "../lib/insights";
-import { displayUrl, formatRatio } from "../lib/format";
+import { displayUrl } from "../lib/format";
 import { ancestorIds, countNodes, expandableIds } from "../lib/tree";
+import { RatioMeter } from "./RatioMeter";
 import { StatusBadge } from "./StatusBadge";
 
 interface PageTreeProps {
@@ -171,18 +172,4 @@ function PageNote({ node, rootUrl, onReveal }: { node: PageTreeNode; rootUrl: st
   }
 
   return null;
-}
-
-/** Domain Link Ratio as a percentage with a small bar (share of links staying on the starting domain). */
-function RatioMeter({ ratio }: { ratio: number | null }) {
-  if (ratio === null) return <span className="ratio ratio-empty" title="No Domain Link Ratio">—</span>;
-
-  return (
-    <span className="ratio" title={`Domain Link Ratio: ${formatRatio(ratio)} of outgoing links stay on the starting domain`}>
-      <span className="ratio-bar" aria-hidden="true">
-        <span className="ratio-fill" style={{ width: `${ratio * 100}%` }} />
-      </span>
-      <span className="ratio-value">{formatRatio(ratio)}</span>
-    </span>
-  );
 }

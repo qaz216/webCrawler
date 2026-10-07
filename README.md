@@ -404,7 +404,7 @@ React 19 + TypeScript + Vite, React Router, and TanStack Query for fetching, cac
   - Light/dark/system theme toggle, saved per browser, with no flash on load.
   - Inter font and Lucide icons.
   - All motion respects `prefers-reduced-motion`.
-- **History** (`/history`): a paginated table (URL, status, created, duration, pages). The page number is kept in the URL (`?page=2`). Clicking a row opens Job Details. The table auto-refreshes while any listed job is still running.
+- **History** (`/history`): a paginated table (URL, status, created, duration, pages, **average link ratio**). The average is the mean Domain Link Ratio of the job's crawled pages. The query pages through jobs first, then averages only those jobs' pages through a lateral join on the `(job_id, url)` index, so its cost is per page of results, not per table. The page number is kept in the URL (`?page=2`). Clicking a row opens Job Details. The table auto-refreshes while any listed job is still running.
 - **States:** every screen has explicit loading, error (with retry, plus the server's correlation id for log lookup) and empty states. An unknown job id gets a "Job not found" page. A failed background poll keeps the last data and shows a warning instead of blanking the page.
 - **Tests:** Vitest + Testing Library cover the formatting and tree helpers, the tree component (expand/collapse, duplicate links) and the Start Crawl form against a mocked API (success, field validation errors, API unreachable).
 
