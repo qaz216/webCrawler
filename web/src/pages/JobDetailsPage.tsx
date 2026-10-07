@@ -42,7 +42,7 @@ function JobView({ job, stale }: { job: JobDetails; stale: boolean }) {
   const [view, setView] = useState<View>("tree");
   const [focus, setFocus] = useState<{ pageId: string; nonce: number } | null>(null);
 
-  // From the graph, the insights card or anywhere else: show that page in the tree.
+  // From the graph: show that page in the tree.
   const selectPage = useCallback((pageId: string) => {
     setView("tree");
     setFocus({ pageId, nonce: Date.now() });
@@ -58,7 +58,7 @@ function JobView({ job, stale }: { job: JobDetails; stale: boolean }) {
 
         <aside className="job-sidebar">
           <ActivityFeed root={tree.data?.root ?? null} live={isActive(job.status)} />
-          <RatioInsights root={tree.data?.root ?? null} onSelectPage={selectPage} />
+          <RatioInsights root={tree.data?.root ?? null} />
         </aside>
       </div>
     </div>

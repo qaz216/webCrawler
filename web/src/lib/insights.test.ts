@@ -30,11 +30,6 @@ describe("ratioStats", () => {
     expect(stats.bands.map((b) => b.count)).toEqual([1, 0, 0, 2]);
   });
 
-  it("picks the most outward-linking pages, ignoring pages without links", () => {
-    // team has ratio 0 but no links at all, so it isn't "outward"; about (0.75) is.
-    expect(ratioStats(sampleTree).mostOutward.map((p) => p.pageId)).toEqual(["about", "root"]);
-  });
-
   it("handles a tree with nothing measured yet", () => {
     expect(ratioStats(null)).toMatchObject({ measured: 0, average: null });
   });

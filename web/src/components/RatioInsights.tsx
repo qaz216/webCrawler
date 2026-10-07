@@ -1,11 +1,11 @@
 import { ChartColumn } from "lucide-react";
 import type { PageTreeNode } from "../api/types";
-import { displayUrl, formatRatio } from "../lib/format";
+import { formatRatio } from "../lib/format";
 import { ratioColor, ratioStats } from "../lib/insights";
 import { useAnimatedNumber } from "../lib/useAnimatedNumber";
 
-/** Job-level view of the Domain Link Ratio: average, distribution, and the most outward-linking pages. */
-export function RatioInsights({ root, onSelectPage }: { root: PageTreeNode | null; onSelectPage: (pageId: string) => void }) {
+/** Job-level view of the Domain Link Ratio: the average and how pages are distributed across ratio bands. */
+export function RatioInsights({ root }: { root: PageTreeNode | null }) {
   const stats = ratioStats(root);
   const average = useAnimatedNumber(stats.average ?? 0);
   const maxBand = Math.max(1, ...stats.bands.map((b) => b.count));
@@ -41,22 +41,6 @@ export function RatioInsights({ root, onSelectPage }: { root: PageTreeNode | nul
               </div>
             ))}
           </div>
-
-          {stats.mostOutward.length > 0 && root && (
-            <div className="outward">
-              <p className="eyebrow">Most links leaving the site</p>
-              <ul>
-                {stats.mostOutward.map((page) => (
-                  <li key={page.pageId}>
-                    <button type="button" className="link-button" onClick={() => onSelectPage(page.pageId)} title={page.url}>
-                      {displayUrl(page.url, root.url)}
-                    </button>
-                    <span className="muted small">{formatRatio(page.domainLinkRatio)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </>
       )}
     </section>

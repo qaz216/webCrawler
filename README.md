@@ -397,7 +397,7 @@ React 19 + TypeScript + Vite, React Router, and TanStack Query for fetching, cac
   - Dashed edges join each duplicate to its original. Particles flow along the edges while the job runs.
   - Hover shows a page's details. Crawled URLs are HTML-escaped in tooltips because they're untrusted input. Clicking a node opens that page in the tree.
   - Positions persist across polls, so the layout doesn't jump.
-- **Ratio insights:** the job-wide average ratio, a histogram by ratio band, and the pages sending the most links off-site. Each of those pages is clickable.
+- **Ratio insights:** the job-wide average ratio and a histogram of pages by ratio band.
 - **Polish:**
   - Counters and the progress bar animate.
   - Pages that appear in the tree while a crawl runs are briefly highlighted.

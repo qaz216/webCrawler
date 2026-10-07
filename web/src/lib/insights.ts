@@ -32,8 +32,6 @@ export interface RatioStats {
   measured: number;
   average: number | null;
   bands: RatioBand[];
-  /** Pages sending the largest share of their links off-site (lowest ratio, at least one link). */
-  mostOutward: PageTreeNode[];
 }
 
 const BANDS: Omit<RatioBand, "count">[] = [
@@ -54,10 +52,6 @@ export function ratioStats(root: PageTreeNode | null | undefined): RatioStats {
       ...band,
       count: ratios.filter((r) => r >= band.min && r < band.max).length,
     })),
-    mostOutward: measured
-      .filter((page) => (page.outgoingLinkCount ?? 0) > 0 && page.domainLinkRatio! < 1)
-      .sort((a, b) => a.domainLinkRatio! - b.domainLinkRatio! || (b.outgoingLinkCount ?? 0) - (a.outgoingLinkCount ?? 0))
-      .slice(0, 3),
   };
 }
 
