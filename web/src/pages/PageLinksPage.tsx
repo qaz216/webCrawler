@@ -177,7 +177,6 @@ function ExternalLinksSection({ links, filtered, domain }: { links: ExternalLink
                     <a href={link.url} target="_blank" rel="noopener noreferrer" className="link-url" title={link.url}>
                       {shortUrl(link.url, "about:blank")}
                     </a>
-                    <ExternalIcon size={14} className="link-open muted" aria-hidden="true" />
                   </li>
                 ))}
               </ul>
