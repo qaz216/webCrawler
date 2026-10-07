@@ -15,12 +15,15 @@ public interface ICrawlQueries
 }
 
 /// <param name="StartingDomain">
-/// Host whose links count as internal: the job URL's host, or where the start page redirected to.
+/// Root domain whose links count as internal (subdomains included): the job URL's, or — if the start
+/// page redirected to a different site — that site's.
 /// </param>
+/// <param name="RedirectedFrom">The host that was entered, when the start page redirected to a different site; otherwise null.</param>
 public sealed record JobDetails(
     Guid JobId,
     string Url,
     string StartingDomain,
+    string? RedirectedFrom,
     JobStatus Status,
     int MaxDepth,
     int MaxPages,

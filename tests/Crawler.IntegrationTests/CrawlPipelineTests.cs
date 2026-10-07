@@ -23,15 +23,16 @@ public class CrawlPipelineTests(PostgresFixture db)
         Assert.Equal("Completed", summary.Status);
         Assert.NotNull(summary.StartedAt);
         Assert.NotNull(summary.CompletedAt);
-        Assert.Equal(11, summary.PagesDiscovered);
+        Assert.Equal(13, summary.PagesDiscovered);
         Assert.Equal(9, summary.PagesCompleted); // includes the skipped PDF
         Assert.Equal(1, summary.PagesFailed);    // the 404
-        Assert.Equal(1, summary.PagesDuplicate); // /index.html = same content as /
+        Assert.Equal(3, summary.PagesDuplicate); // /index.html, www.site.test/, blog.site.test/ = same content as /
 
         var pages = await harness.GetPagesAsync(job.JobId);
         Assert.Equal(
             ["/", "/about.html", "/blog/post.html", "/files/manual.pdf", "/flaky.html", "/index.html", "/missing.html",
-             "/products/", "/products/a.html", "/products/b.html", "/team.html"],
+             "/products/", "/products/a.html", "/products/b.html", "/team.html",
+             "https://blog.site.test/", "https://www.site.test/"],
             pages.Keys.Order(StringComparer.Ordinal));
 
         // Depth limit: c.html is linked from a depth-2 page, so it is never discovered or fetched.
@@ -41,7 +42,7 @@ public class CrawlPipelineTests(PostgresFixture db)
         AssertPage(pages["/"], depth: 0, "Completed", ratio: 0.875m, links: 8, parent: null);
         AssertPage(pages["/about.html"], depth: 1, "Completed", ratio: 0.75m, links: 4, parent: "/");
         AssertPage(pages["/products/"], depth: 1, "Completed", ratio: 1m, links: 4, parent: "/");
-        AssertPage(pages["/blog/post.html"], depth: 1, "Completed", ratio: 0.3333m, links: 3, parent: "/"); // www./blog. are external
+        AssertPage(pages["/blog/post.html"], depth: 1, "Completed", ratio: 1m, links: 3, parent: "/"); // www./blog. subdomains are internal
         AssertPage(pages["/flaky.html"], depth: 1, "Completed", ratio: 1m, links: 1, parent: "/");
         AssertPage(pages["/team.html"], depth: 2, "Completed", ratio: 0m, links: 0, parent: "/about.html");
         AssertPage(pages["/products/a.html"], depth: 2, "Completed", ratio: 1m, links: 1, parent: "/products/");
@@ -58,11 +59,19 @@ public class CrawlPipelineTests(PostgresFixture db)
         Assert.Equal("/about.html", new Uri(alias.ParentUrl!).PathAndQuery);
         Assert.Null(alias.DomainLinkRatio);
 
+        // Subdomains are the same site: followed, fetched, and (serving the home page) recorded as duplicates.
+        foreach (var subdomain in new[] { "https://www.site.test/", "https://blog.site.test/" })
+        {
+            Assert.Equal("Duplicate", pages[subdomain].Status);
+            Assert.Equal("https://site.test/", pages[subdomain].DuplicateOfUrl);
+            Assert.Equal(2, pages[subdomain].Depth);
+        }
+
         // Transient 503 was retried and succeeded on the second attempt.
         Assert.Equal(2, pages["/flaky.html"].Attempts);
 
         // No URL fetched twice, even though several are linked from multiple pages.
-        Assert.All(harness.Site.Requests.Where(r => r.Key != "/flaky.html"), r => Assert.Equal(1, r.Value));
+        Assert.All(harness.Site.Requests.Where(r => r.Key != "site.test/flaky.html"), r => Assert.Equal(1, r.Value));
     }
 
     [Fact]
@@ -116,13 +125,13 @@ public class CrawlPipelineTests(PostgresFixture db)
         Assert.Equal("Completed", pages["/team.html"].Status);
         Assert.Equal(2, pages["/team.html"].Depth);
 
-        // site.test/ (the redirect target, linked as "#top") and /index.html have the root's content:
-        // fetched once each, recorded as duplicates, not crawled again.
+        // site.test/ (the redirect target, linked as "#top"), /index.html and the www./blog. subdomains
+        // have the root's content: fetched once each, recorded as duplicates, not crawled again.
         Assert.Equal("Duplicate", pages["/"].Status);
         Assert.Equal("Duplicate", pages["/index.html"].Status);
-        Assert.Equal(2, summary.PagesDuplicate);
+        Assert.Equal(4, summary.PagesDuplicate);
         Assert.Equal(1, summary.PagesFailed);
-        Assert.Equal(12, summary.PagesDiscovered);
+        Assert.Equal(14, summary.PagesDiscovered);
     }
 
     [Fact]

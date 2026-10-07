@@ -201,8 +201,10 @@ Tree node shape:
 ## Crawling rules and assumptions
 
 **Scope**
-- Only links whose host equals the **starting domain** are followed. The starting domain is the host of the job URL, compared case-insensitively and exactly, so `www.example.com` ≠ `example.com` and subdomains count as external. External links are recorded and counted for the ratio but never fetched.
-- **If the start page redirects to another host, that host becomes the starting domain.** For example, `google.com` → `www.google.com`. The site has told us where it lives, and without this rule such a crawl would stop at its first page. The job stores the effective domain (`startingDomain` in the API, shown in the UI as "www.google.com (redirected from google.com)"). The rule applies to the start page only: any other page that redirects off the starting domain is `Skipped`.
+- **The starting domain is the root domain of the job URL,** and links within it, subdomains included, are internal. Starting from `newsmax.com`, links to `www.newsmax.com`, `w3.newsmax.com` and `ir.newsmax.com` are internal. Links to `newsmaxtv.com`, `facebook.com` or `bbc.co.uk` are external. Internal links are followed; external links are recorded and counted for the ratio but never fetched. Code: [`RootDomain.cs`](src/Crawler.Domain/Urls/RootDomain.cs).
+  - The root domain is the last two labels of the host, or the last three under common two-part country suffixes (`co.uk`, `com.au`, `co.il`, …). So `news.bbc.co.uk` → `bbc.co.uk`, never `co.uk`, and other `.co.uk` sites stay external. IP addresses and single-label hosts (`localhost`) are their own root.
+  - Why not the exact host? To a person, `www.example.com`, `example.com` and `shop.example.com` are one site, and most sites link freely between them. Counting them as "outside" would understate every page's ratio.
+- **If the start page redirects to a different site, that site becomes the starting domain.** For example, a link shortener might send you to `example.org`. Without this rule such a crawl would stop at its first page. Redirects between subdomains (`google.com` → `www.google.com`) stay on the same site and change nothing. The job stores the effective domain: `startingDomain` and `redirectedFrom` in the API, shown in the UI as "example.org (redirected from …)". The rule applies to the start page only: any other page that redirects to a different site is `Skipped`.
 - Depth: the root is depth `0`. Children are enqueued only while `depth < maxDepth`.
 - **HTML only.** A response is parsed only if its `Content-Type` is `text/html` or `application/xhtml+xml`. Anything else is stored as `Skipped (non-HTML)` with no links.
 - Redirects are followed (max 5). The **final** URL is the base for resolving relative links. Apart from the start page (above), redirects that leave the starting domain are not followed further.
@@ -434,7 +436,7 @@ The dev server runs at http://localhost:5173, with `/api` proxied to `localhost:
 | Layer | What | How |
 |-------|------|-----|
 | Unit | `UrlNormalizer`: relative paths (`../x`, `./x`, `/x`, `//host/x`), `<base href>`, fragments and bare `#`, ignored schemes, case and default port, empty path | xUnit `[Theory]` tables |
-| Unit | `DomainLinkRatio`: all internal, all external, mixed, zero links → 0, duplicates counted once, self-links, subdomain = external | xUnit |
+| Unit | `DomainLinkRatio`: all internal, all external, mixed, zero links → 0, duplicates counted once, self-links, subdomains = internal, other sites (including `.co.uk`) = external. `RootDomain`: www./w3./deep subdomains, two-part country suffixes, IPs and localhost | xUnit |
 | Unit | `LinkExtractor`: anchors, malformed hrefs, non-HTML content | Fixture HTML strings |
 | Integration | Crawl a **local fixture site**: a static HTML folder served by a fake `HttpMessageHandler`, including a cycle, a duplicate link, an external link, a non-HTML file and a 500. The expected tree, ratios and statuses are asserted against real Postgres. | Testcontainers Postgres plus an in-memory publisher that feeds tasks straight back to the handler |
 | Integration | **Idempotency:** deliver the same `CrawlPageTask` twice (and concurrently) and assert no duplicate `pages`/`page_links` rows and correct counters | Same harness |
@@ -476,13 +478,13 @@ This is a time-boxed (~4h) assignment. The order follows the rubric weights and 
 ## Known limitations
 
 - JavaScript-rendered links are not discovered, because there's no headless browser.
-- `www.` and bare domains are treated as different hosts by design. Subdomains are external.
+- The root domain uses a built-in list of common two-part country suffixes, not the full [Public Suffix List](https://publicsuffix.org/). Rare suffixes (`gov.bc.ca`) and shared-hosting domains aren't recognized, so `alice.github.io` and `bob.github.io` would count as one site. Bundling the Public Suffix List is the production fix.
 - The tree shows one parent per page (the first discoverer). Other inbound links exist only in `page_links`.
 - The job completes when there are no pending pages. If a worker dies mid-page, the page waits for its 2-minute lease to expire and for redelivery, which delays completion.
 - Migrations run when the API and worker start. This is not suitable for multi-instance production deploys.
 - Default credentials in `docker-compose.yml` are for local use only.
 - Content de-duplication needs an exact match. Pages that embed per-request values (timestamps, CSRF tokens, ads) get different fingerprints and are crawled as separate pages. An alias is still fetched once before it can be recognized, so it costs one request, but it is never expanded.
 - A redirect's target URL isn't recorded as a page of its own. If another page links directly to that target, it's fetched again. Content de-duplication then records it as a `Duplicate`, so this costs a request but no repeated crawl.
-- `www.` and bare domains are only unified through the start-page redirect rule. A site that serves both hosts without redirecting is crawled on the host you entered.
+- When a site serves the same page on several subdomains (`newsmax.com/` and `www.newsmax.com/`), both are crawled. Content de-duplication only merges them if the HTML is identical, which dynamic pages usually aren't.
 - Canceling stops new work, but pages that were queued stay `Pending` in the tree. In-flight pages finish.
 - A dead-lettered page is marked `Failed` by the worker. If the database is also down at that moment, the page stays `Processing` and its job never completes. A reaper for expired leases would fix this.

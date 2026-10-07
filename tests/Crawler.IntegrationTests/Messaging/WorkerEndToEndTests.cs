@@ -37,10 +37,10 @@ public class WorkerEndToEndTests(PostgresFixture db, RabbitMqFixture broker)
         var summary = await WaitForJobAsync(job.JobId);
 
         Assert.Equal("Completed", summary.Status);
-        Assert.Equal(11, summary.PagesDiscovered);
+        Assert.Equal(13, summary.PagesDiscovered);
         Assert.Equal(9, summary.PagesCompleted);
         Assert.Equal(1, summary.PagesFailed);
-        Assert.Equal(1, summary.PagesDuplicate);
+        Assert.Equal(3, summary.PagesDuplicate);
         Assert.Equal(2, site.RequestCount("/flaky.html")); // 503 → retry tier → success
         Assert.Equal(0, site.RequestCount("/products/c.html"));
     }

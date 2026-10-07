@@ -90,8 +90,8 @@ public sealed class PageTaskHandler(
         if (fetch.Kind == FetchKind.HttpError)
             return PageOutcome.Failed(page.PageId, $"HTTP {fetch.StatusCode}", fetch.StatusCode);
 
-        // The start page decides where the site lives: if it redirects to another host
-        // (google.com → www.google.com), that host becomes the job's starting domain.
+        // Subdomain redirects (google.com → www.google.com) stay on the site. If the start page
+        // redirects to a different site altogether, that site becomes the job's starting domain.
         // Any other page that redirects off the starting domain is outside the crawl.
         var rootHost = page.RootHost;
         string? newRootHost = null;

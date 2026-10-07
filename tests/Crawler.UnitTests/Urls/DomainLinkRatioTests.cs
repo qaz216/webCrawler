@@ -36,13 +36,29 @@ public class DomainLinkRatioTests
     }
 
     [Theory]
-    [InlineData("https://www.example.com/a", false)]
-    [InlineData("https://blog.example.com/a", false)]
-    [InlineData("https://example.com.evil.net/a", false)]
+    [InlineData("https://www.example.com/a", true)]       // subdomains of the same root domain
+    [InlineData("https://blog.example.com/a", true)]
     [InlineData("https://EXAMPLE.com/a", true)]
     [InlineData("http://example.com:8080/a", true)]
-    public void Only_the_exact_starting_host_is_internal(string link, bool expected) =>
+    [InlineData("https://example.com.evil.net/a", false)] // other sites
+    [InlineData("https://example.org/a", false)]
+    [InlineData("https://www.bbc.co.uk/a", false)]
+    [InlineData("https://example.co.uk/a", false)]
+    public void Links_within_the_starting_root_domain_are_internal(string link, bool expected) =>
         Assert.Equal(expected, DomainLinkRatio.IsInternal(link, Host));
+
+    [Fact]
+    public void Subdomain_links_count_as_internal_in_the_ratio()
+    {
+        // From www.newsmax.com: www., w3., ir. and the bare domain are inside; .uk and other sites outside.
+        var ratio = DomainLinkRatio.Calculate(
+        [
+            "https://www.newsmax.com/a", "https://w3.newsmax.com/b", "https://ir.newsmax.com/",
+            "https://newsmax.com/c", "https://www.bbc.co.uk/", "https://facebook.com/Newsmax",
+        ], "www.newsmax.com");
+
+        Assert.Equal(4.0 / 6.0, ratio, precision: 10);
+    }
 
     [Fact]
     public void Starting_host_comparison_is_case_insensitive() =>

@@ -1,5 +1,6 @@
 using Crawler.Application.Abstractions;
 using Crawler.Domain.Jobs;
+using Crawler.Domain.Urls;
 using Dapper;
 using Npgsql;
 
@@ -25,11 +26,16 @@ public sealed class CrawlQueries(NpgsqlDataSource dataSource) : ICrawlQueries
             """,
             new { jobId }, cancellationToken: cancellationToken));
 
-        return row is null
-            ? null
-            : new JobDetails(row.Id, row.Url, row.RootHost, Enum.Parse<JobStatus>(row.Status), row.MaxDepth, row.MaxPages,
-                row.CreatedAt, row.StartedAt, row.CompletedAt, row.FailureReason,
-                new JobProgress(row.PagesDiscovered, row.PagesCompleted, row.PagesFailed, row.PagesDuplicate));
+        if (row is null)
+            return null;
+
+        var startingDomain = RootDomain.Of(row.RootHost);
+        var enteredHost = new Uri(row.Url).Host;
+        var redirectedFrom = RootDomain.SameSite(enteredHost, row.RootHost) ? null : enteredHost;
+
+        return new JobDetails(row.Id, row.Url, startingDomain, redirectedFrom, Enum.Parse<JobStatus>(row.Status),
+            row.MaxDepth, row.MaxPages, row.CreatedAt, row.StartedAt, row.CompletedAt, row.FailureReason,
+            new JobProgress(row.PagesDiscovered, row.PagesCompleted, row.PagesFailed, row.PagesDuplicate));
     }
 
     public async Task<IReadOnlyList<PageRecord>> GetPagesAsync(Guid jobId, CancellationToken cancellationToken)

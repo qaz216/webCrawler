@@ -70,7 +70,7 @@ function JobSummary({ job, stale }: { job: JobDetails; stale: boolean }) {
   const cancel = useCancelJob(job.jobId);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const now = useNow(isActive(job.status));
-  const from = redirectedFrom(job);
+  const from = job.redirectedFrom;
 
   return (
     <section className={`card job-card job-${job.status.toLowerCase()}`}>
@@ -128,7 +128,7 @@ function JobSummary({ job, stale }: { job: JobDetails; stale: boolean }) {
         <div><dt>Completed</dt><dd>{formatDateTime(job.completedAt)}</dd></div>
         <div><dt>Duration</dt><dd>{formatDuration(job.startedAt, job.completedAt, now)}</dd></div>
         <div>
-          <dt>Starting domain</dt>
+          <dt title="Links to this domain or any of its subdomains count as internal">Starting domain</dt>
           <dd>
             {job.startingDomain}
             {from && <span className="muted small"> (redirected from {from})</span>}
@@ -193,16 +193,6 @@ function PagesPanel({ job, tree, isPending, error, onRetry, view, onViewChange, 
       )}
     </section>
   );
-}
-
-/** The host the user entered, when the start page redirected elsewhere (google.com → www.google.com). */
-function redirectedFrom(job: JobDetails): string | null {
-  try {
-    const entered = new URL(job.url).host;
-    return entered.toLowerCase() === job.startingDomain.toLowerCase() ? null : entered;
-  } catch {
-    return null;
-  }
 }
 
 /** Ticks every second while `active`, so a running job's duration counts up. */

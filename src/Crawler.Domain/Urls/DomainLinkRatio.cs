@@ -21,10 +21,10 @@ public static class DomainLinkRatio
     }
 
     /// <summary>
-    /// True when the link's host equals the starting host (case-insensitive, exact:
-    /// subdomains and www/non-www variants are external by design).
+    /// True when the link stays within the starting domain, measured by root domain: www., w3. and
+    /// any other subdomain of the same site are internal (see <see cref="RootDomain"/>).
     /// </summary>
     public static bool IsInternal(string normalizedLink, string startingHost) =>
         Uri.TryCreate(normalizedLink, UriKind.Absolute, out var uri)
-        && string.Equals(uri.Host, startingHost, StringComparison.OrdinalIgnoreCase);
+        && RootDomain.SameSite(uri.Host, startingHost);
 }

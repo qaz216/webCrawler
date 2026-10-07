@@ -16,8 +16,10 @@ export interface JobProgress {
 export interface JobDetails {
   jobId: string;
   url: string;
-  /** Host whose links count as internal: the URL's host, or where the start page redirected to. */
+  /** Root domain whose links count as internal (subdomains included). */
   startingDomain: string;
+  /** The host that was entered, when the start page redirected to a different site; otherwise null. */
+  redirectedFrom: string | null;
   status: JobStatus;
   maxDepth: number;
   maxPages: number;

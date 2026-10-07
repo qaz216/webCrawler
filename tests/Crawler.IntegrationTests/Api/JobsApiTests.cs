@@ -120,8 +120,10 @@ public sealed class JobsApiTests(PostgresFixture db) : IDisposable
         Assert.Equal("Completed", (string?)job!["status"]);
         Assert.NotNull(job["startedAt"]);
         Assert.NotNull(job["completedAt"]);
-        Assert.Equal(11, (int?)job["progress"]!["discovered"]);
-        Assert.Equal(1, (int?)job["progress"]!["duplicates"]);
+        Assert.Equal(13, (int?)job["progress"]!["discovered"]);
+        Assert.Equal(3, (int?)job["progress"]!["duplicates"]);
+        Assert.Equal("site.test", (string?)job["startingDomain"]);
+        Assert.Null(job["redirectedFrom"]);
         Assert.Equal(0, (int?)job["progress"]!["pending"]);
         Assert.Equal(100.0, (double?)job["progress"]!["percent"]);
 
@@ -148,10 +150,10 @@ public sealed class JobsApiTests(PostgresFixture db) : IDisposable
         Assert.Equal(404, (int?)missing["httpStatus"]);
 
         // History shows the job's average ratio over its 8 crawled HTML pages
-        // (/ .875, /about .75, /products/ 1, /blog .3333, /flaky 1, /team 0, /a 1, /b 0).
+        // (/ .875, /about .75, /products/ 1, /blog 1, /flaky 1, /team 0, /a 1, /b 0).
         var history = await client.GetFromJsonAsync<JsonObject>("/api/jobs?pageSize=100");
         var listed = history!["items"]!.AsArray().Single(i => i!["jobId"]!.GetValue<Guid>() == jobId)!;
-        Assert.Equal(4.9583 / 8, (double)listed["averageDomainLinkRatio"]!, precision: 4);
+        Assert.Equal(5.625 / 8, (double)listed["averageDomainLinkRatio"]!, precision: 4);
     }
 
     [Fact]

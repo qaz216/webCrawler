@@ -5,7 +5,7 @@ using System.Net.Http.Headers;
 namespace Crawler.IntegrationTests.Infrastructure;
 
 /// <summary>
-/// Serves Fixtures/site as https://site.test/ without a network. "/dir/" maps to dir/index.html,
+/// Serves Fixtures/site as https://site.test/ (and its subdomains) without a network. "/dir/" maps to dir/index.html,
 /// .pdf files are served as application/pdf, missing files are 404, /flaky.html returns
 /// 503 on its first request and /down.html always returns 503. Every request is counted so tests can assert "fetched exactly once".
 /// </summary>
@@ -25,8 +25,10 @@ public sealed class FixtureSiteHandler : HttpMessageHandler
 
     private readonly ConcurrentDictionary<string, int> _requests = new();
 
-    public int RequestCount(string path) => _requests.GetValueOrDefault(path);
+    /// <summary>Requests for <paramref name="path"/> on <paramref name="host"/> (default: site.test).</summary>
+    public int RequestCount(string path, string host = Host) => _requests.GetValueOrDefault(host + path);
 
+    /// <summary>Request counts keyed by host + path, e.g. "site.test/about.html".</summary>
     public IReadOnlyDictionary<string, int> Requests => _requests;
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -38,7 +40,7 @@ public sealed class FixtureSiteHandler : HttpMessageHandler
             request = new HttpRequestMessage(request.Method, uri);
         }
 
-        var count = _requests.AddOrUpdate(uri.AbsolutePath, 1, (_, n) => n + 1);
+        var count = _requests.AddOrUpdate(uri.Host + uri.AbsolutePath, 1, (_, n) => n + 1);
 
         var response = Respond(uri, count);
         response.RequestMessage = request;
@@ -47,7 +49,9 @@ public sealed class FixtureSiteHandler : HttpMessageHandler
 
     private static HttpResponseMessage Respond(Uri uri, int requestNumber)
     {
-        if (!string.Equals(uri.Host, Host, StringComparison.OrdinalIgnoreCase))
+        // Subdomains (www.site.test, blog.site.test) serve the same files, like many real sites.
+        var host = uri.Host.ToLowerInvariant();
+        if (host != Host && !host.EndsWith("." + Host, StringComparison.Ordinal))
             return new HttpResponseMessage(HttpStatusCode.NotFound);
 
         if (uri.AbsolutePath == "/flaky.html" && requestNumber == 1)
